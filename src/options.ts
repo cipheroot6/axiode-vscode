@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { Desktop } from './desktop';
 import { Logger } from './logger';
 import { Utils } from './utils';
+import { DEFAULT_API_URL } from './constants';
 
 export interface Setting {
   key: string;
@@ -23,8 +24,8 @@ export class Options {
   constructor(logger: Logger, resourcesFolder: string) {
     this.logger = logger;
     this.configFile = path.join(Desktop.getHomeDirectory(), '.wakatime.cfg');
-    this.internalConfigFile = path.join(resourcesFolder, 'wakatime-internal.cfg');
-    this.logFile = path.join(resourcesFolder, 'wakatime.log');
+    this.internalConfigFile = path.join(resourcesFolder, 'devpulse-internal.cfg');
+    this.logFile = path.join(resourcesFolder, 'devpulse.log');
   }
 
   public async getSettingAsync<T = any>(section: string, key: string): Promise<T> {
@@ -219,7 +220,7 @@ export class Options {
     if (!Utils.apiKeyInvalid(keyFromEnv)) {
       if (this.cache.api_key && this.cache.api_key !== keyFromEnv) {
         vscode.window.showErrorMessage(
-          `WakaTime API Key conflict. Your env key doesn't match your ${from} key.`,
+          `DevPulse API Key conflict. Your env key doesn't match your ${from} key.`,
         );
         return this.cache.api_key;
       }
@@ -232,7 +233,7 @@ export class Options {
       if (!Utils.apiKeyInvalid(apiKeyFromVault)) {
         if (this.cache.api_key && this.cache.api_key !== apiKeyFromVault) {
           vscode.window.showErrorMessage(
-            `WakaTime API Key conflict. Your vault command key doesn't match your ${from} key.`,
+            `DevPulse API Key conflict. Your vault command key doesn't match your ${from} key.`,
           );
           return this.cache.api_key;
         }
@@ -246,7 +247,7 @@ export class Options {
       if (!Utils.apiKeyInvalid(apiKey)) {
         if (this.cache.api_key && this.cache.api_key !== apiKey) {
           vscode.window.showErrorMessage(
-            `WakaTime API Key conflict. Your ~/.wakatime.cfg key doesn't match your ${from} key.`,
+            `DevPulse API Key conflict. Your ~/.devpulse.cfg key doesn't match your ${from} key.`,
           );
         }
         this.cache.api_key = apiKey;
@@ -255,7 +256,7 @@ export class Options {
       this.logger.debug(`Exception while reading API Key from config file: ${err}`);
       if (!this.cache.api_key && `${err}`.includes('spawn EPERM')) {
         vscode.window.showErrorMessage(
-          'Microsoft Defender is blocking WakaTime. Please allow WakaTime to run so it can upload code stats to your dashboard.',
+          'Microsoft Defender is blocking DevPulse. Please allow DevPulse to run so it can upload code stats to your dashboard.',
         );
       }
     }
@@ -265,8 +266,8 @@ export class Options {
 
   public async getApiKeyFromVaultCmd(): Promise<string> {
     try {
-      // Use basically the same logic as wakatime-cli to interpret cmdStr
-      // https://github.com/wakatime/wakatime-cli/blob/1fd560a/cmd/params/params.go#L697
+      // Use basically the same logic as devpulse-cli to interpret cmdStr
+      // https://github.com/devpulse/devpulse-cli/blob/1fd560a/cmd/params/params.go#L697
       const cmdStr = await this.getSettingAsync<string>('settings', 'api_key_vault_cmd');
       if (!cmdStr?.trim()) return '';
 
@@ -302,15 +303,15 @@ export class Options {
   }
 
   public getApiKeyFromEditor(): string {
-    return vscode.workspace.getConfiguration().get('wakatime.apiKey') || '';
+    return vscode.workspace.getConfiguration().get('devpulse.apiKey') || '';
   }
 
   private getApiUrlFromEditor(): string {
-    return vscode.workspace.getConfiguration().get('wakatime.apiUrl') || '';
+    return vscode.workspace.getConfiguration().get('devpulse.apiUrl') || '';
   }
 
   public getStatusBarAlignment(): vscode.StatusBarAlignment {
-    const align: string = vscode.workspace.getConfiguration().get('wakatime.align') ?? '';
+    const align: string = vscode.workspace.getConfiguration().get('devpulse.align') ?? '';
     switch (align) {
       case 'left':
         return vscode.StatusBarAlignment.Left;
@@ -322,11 +323,11 @@ export class Options {
   }
 
   public getStatusBarPriority(): number {
-    const priority = vscode.workspace.getConfiguration().get('wakatime.alignPriority');
+    const priority = vscode.workspace.getConfiguration().get('devpulse.alignPriority');
     return typeof priority === 'number' ? priority : 1;
   }
 
-  // Support for gitpod.io https://github.com/wakatime/vscode-wakatime/pull/220
+  // Support for gitpod.io https://github.com/devpulse/vscode-devpulse/pull/220
   public getApiKeyFromEnv(): string {
     if (this.cache.api_key_from_env !== undefined) return this.cache.api_key_from_env;
 
@@ -357,7 +358,7 @@ export class Options {
       }
     }
 
-    if (!apiUrl) apiUrl = 'https://api.wakatime.com/api/v1';
+    if (!apiUrl) apiUrl = DEFAULT_API_URL;
 
     const suffixes = ['/', '.bulk', '/users/current/heartbeats', '/heartbeats', '/heartbeat'];
     for (const suffix of suffixes) {

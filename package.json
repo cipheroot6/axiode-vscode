@@ -1,11 +1,11 @@
 {
-  "name": "vscode-wakatime",
-  "displayName": "WakaTime",
-  "description": "Metrics, insights, and time tracking automatically generated from your programming activity.",
-  "version": "30.2.0",
-  "publisher": "WakaTime",
+  "name": "devpulse-vscode",
+  "displayName": "DevPulse",
+  "description": "Real-time developer activity tracking for DevPulse — sessions, projects, and productivity insights.",
+  "version": "1.0.0",
+  "publisher": "devpulse",
   "author": {
-    "name": "WakaTime"
+    "name": "DevPulse"
   },
   "categories": [
     "Visualization",
@@ -20,25 +20,14 @@
     "focus",
     "metrics",
     "productivity",
-    "slack",
-    "standup",
-    "time",
-    "timer",
-    "time tracker",
+    "devpulse",
+    "dev-pulse",
     "time tracking",
-    "todo",
-    "tracker",
-    "tracking",
-    "worktime",
-    "wakatime"
+    "tracking"
   ],
-  "homepage": "https://wakatime.com/",
-  "bugs": {
-    "url": "https://github.com/wakatime/vscode-wakatime/issues",
-    "email": "support@wakatime.com"
-  },
+  "homepage": "https://dev-pulse-application.vercel.app",
   "license": "BSD-3-Clause",
-  "icon": "images/wakatime-logo.png",
+  "icon": "images/devpulse-logo.png",
   "galleryBanner": {
     "color": "#AEC3D8",
     "theme": "light"
@@ -51,12 +40,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/wakatime/vscode-wakatime.git"
+    "url": "https://github.com/cipheroot/devpulse-vscode.git"
   },
   "engines": {
-    "vscode": "^1.89.0",
-    "sqlops": "*",
-    "azdata": "*"
+    "vscode": "^1.89.0"
   },
   "main": "./dist/extension",
   "browser": "./dist/web/extension",
@@ -66,69 +53,65 @@
     "compile:dev": "tsc -p ./",
     "watch": "webpack --mode none --watch",
     "open-in-browser": "vscode-test-web --open-devtools --quality insiders --extensionDevelopmentPath=. .",
-    "publish:major": "vsce publish --allow-star-activation major && npm run publish:web && git push --tags",
-    "publish:minor": "vsce publish --allow-star-activation minor && npm run publish:web && git push --tags",
-    "publish:patch": "vsce publish --allow-star-activation patch && npm run publish:web && git push --tags",
-    "publish:web": "npx ovsx publish",
     "test": "npm run compile:dev && node ./node_modules/vscode/bin/test"
   },
   "contributes": {
     "commands": [
       {
-        "command": "wakatime.apikey",
-        "title": "WakaTime: Api Key"
+        "command": "devpulse.apikey",
+        "title": "DevPulse: Api Key"
       },
       {
-        "command": "wakatime.apiurl",
-        "title": "WakaTime: Api Url"
+        "command": "devpulse.apiurl",
+        "title": "DevPulse: Api Url"
       },
       {
-        "command": "wakatime.proxy",
-        "title": "WakaTime: Proxy"
+        "command": "devpulse.proxy",
+        "title": "DevPulse: Proxy"
       },
       {
-        "command": "wakatime.debug",
-        "title": "WakaTime: Debug"
+        "command": "devpulse.debug",
+        "title": "DevPulse: Debug"
       },
       {
-        "command": "wakatime.disable",
-        "title": "WakaTime: Disable/Enable Extension"
+        "command": "devpulse.disable",
+        "title": "DevPulse: Enable/Disable Extension"
       },
       {
-        "command": "wakatime.status_bar_enabled",
-        "title": "WakaTime: Status Bar Enabled"
+        "command": "devpulse.status_bar_enabled",
+        "title": "DevPulse: Status Bar Enabled"
       },
       {
-        "command": "wakatime.status_bar_coding_activity",
-        "title": "WakaTime: Status Bar Coding Activity"
+        "command": "devpulse.status_bar_coding_activity",
+        "title": "DevPulse: Status Bar Coding Activity"
       },
       {
-        "command": "wakatime.dashboard",
-        "title": "WakaTime: Open Dashboard"
+        "command": "devpulse.dashboard",
+        "title": "DevPulse: Open Dashboard"
       },
       {
-        "command": "wakatime.config_file",
-        "title": "WakaTime: Open Config File..."
+        "command": "devpulse.config_file",
+        "title": "DevPulse: Open Config File..."
       },
       {
-        "command": "wakatime.log_file",
-        "title": "WakaTime: Open Log File..."
+        "command": "devpulse.log_file",
+        "title": "DevPulse: Open Log File..."
       }
     ],
     "configuration": {
-      "title": "WakaTime",
+      "title": "DevPulse",
       "properties": {
-        "wakatime.apiKey": {
+        "devpulse.apiKey": {
           "type": "string",
-          "description": "Defaults to value from ~/.wakatime.cfg, unless running in browser.",
+          "description": "Defaults to value from ~/.devpulse.cfg, unless running in browser.",
           "scope": "application"
         },
-        "wakatime.apiUrl": {
+        "devpulse.apiUrl": {
           "type": "string",
-          "description": "Defaults to https://api.wakatime.com/api/v1.",
+          "description": "Defaults to https://dev-pulse-application.vercel.app/api/v1.",
           "scope": "application"
         },
-        "wakatime.align": {
+        "devpulse.align": {
           "type": "string",
           "enum": [
             "left",
@@ -137,7 +120,7 @@
           "default": "left",
           "description": "Defines the alignment of the status bar item, requires restart of VS Code"
         },
-        "wakatime.alignPriority": {
+        "devpulse.alignPriority": {
           "type": "number",
           "default": 1,
           "description": "Defines priority of the status bar item. Higher values mean the item should be shown more to the left, requires restart of VS Code"
@@ -147,7 +130,6 @@
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
-    "@types/azdata": "^1.46.6",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.9.1",
     "@types/request": "^2.48.13",
@@ -157,7 +139,6 @@
     "@types/which": "^3.0.4",
     "@vscode/test-web": "^0.0.74",
     "adm-zip": "0.5.16",
-    "azdata": "^1.0.0",
     "del-cli": "^7.0.0",
     "original-fs": "^1.2.0",
     "prettier": "3.6.2",

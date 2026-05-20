@@ -15,81 +15,81 @@ import {
 } from './constants';
 
 import { Logger } from './logger';
-import { WakaTime } from './wakatime';
+import { DevPulse } from './wakatime';
 
-var logger = new Logger(LogLevel.INFO);
-var wakatime: WakaTime;
+var devpulse: DevPulse;
 
 export function activate(ctx: vscode.ExtensionContext) {
-  wakatime = new WakaTime(ctx.extensionPath, logger);
+  const logger = new Logger('devpulse');
+  devpulse = new DevPulse(ctx.extensionPath, logger);
 
-  ctx.globalState?.setKeysForSync(['wakatime.apiKey']);
+  ctx.globalState?.setKeysForSync(['devpulse.apiKey']);
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_API_KEY, function () {
-      wakatime.promptForApiKey();
+      devpulse.promptForApiKey();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_API_URL, function () {
-      wakatime.promptForApiUrl();
+      devpulse.promptForApiUrl();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_PROXY, function () {
-      wakatime.promptForProxy();
+      devpulse.promptForProxy();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_DEBUG, function () {
-      wakatime.promptForDebug();
+      devpulse.promptForDebug();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_DISABLE, function () {
-      wakatime.promptToDisable();
+      devpulse.promptToDisable();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_STATUS_BAR_ENABLED, function () {
-      wakatime.promptStatusBarIcon();
+      devpulse.promptStatusBarIcon();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_STATUS_BAR_CODING_ACTIVITY, function () {
-      wakatime.promptStatusBarCodingActivity();
+      devpulse.promptStatusBarCodingActivity();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_DASHBOARD, function () {
-      wakatime.openDashboardWebsite();
+      devpulse.openDashboardWebsite();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_CONFIG_FILE, function () {
-      wakatime.openConfigFile();
+      devpulse.openConfigFile();
     }),
   );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_LOG_FILE, function () {
-      wakatime.openLogFile();
+      devpulse.openLogFile();
     }),
   );
 
-  ctx.subscriptions.push(wakatime);
+  ctx.subscriptions.push(devpulse);
 
-  wakatime.initialize();
+  devpulse.initialize();
 }
 
 export function deactivate() {
-  wakatime.dispose();
+  devpulse.dispose();
 }

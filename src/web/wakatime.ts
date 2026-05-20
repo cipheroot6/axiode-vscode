@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import {
   AI_RECENT_PASTES_TIME_MS,
   COMMAND_DASHBOARD,
+  DEFAULT_API_URL,
   Heartbeat,
   LogLevel,
   SEND_BUFFER_SECONDS,
@@ -13,7 +14,7 @@ import { Memento } from 'vscode';
 import { FileSelectionMap, HumanTypingMap, LineCounts, LinesInFiles } from '../types';
 import { Utils } from '../utils';
 
-export class WakaTime {
+export class DevPulse {
   private agentName: string;
   private extension: any;
   private statusBar?: vscode.StatusBarItem = undefined;
@@ -61,17 +62,17 @@ export class WakaTime {
   }
 
   public initialize(): void {
-    if (this.config.get('wakatime.debug') == 'true') {
+    if (this.config.get('devpulse.debug') == 'true') {
       this.logger.setLevel(LogLevel.DEBUG);
     }
 
-    const extension = vscode.extensions.getExtension('WakaTime.vscode-wakatime');
+    const extension = vscode.extensions.getExtension('DevPulse.vscode-devpulse');
     this.extension = (extension != undefined && extension.packageJSON) || { version: '0.0.0' };
     this.agentName = Utils.getEditorName();
 
     this.hasAICapabilities = Utils.hasAIExtensions();
 
-    this.disabled = this.config.get('wakatime.disabled') === 'true';
+    this.disabled = this.config.get('devpulse.disabled') === 'true';
     if (this.disabled) {
       this.dispose();
       return;
@@ -89,53 +90,53 @@ export class WakaTime {
   }
 
   public initializeDependencies(): void {
-    this.logger.debug(`Initializing WakaTime v${this.extension.version}`);
+    this.logger.debug(`Initializing DevPulse v${this.extension.version}`);
 
     const align = this.getStatusBarAlignment();
     const priority = this.getStatusBarPriority();
 
     this.statusBar = vscode.window.createStatusBarItem(
-      'com.wakatime.statusbar',
+      'com.devpulse.statusbar',
       align,
       priority + 2,
     );
-    this.statusBar.name = 'WakaTime';
+    this.statusBar.name = 'DevPulse';
     this.statusBar.command = COMMAND_DASHBOARD;
 
     this.statusBarTeamYou = vscode.window.createStatusBarItem(
-      'com.wakatime.teamyou',
+      'com.devpulse.teamyou',
       align,
       priority + 1,
     );
-    this.statusBarTeamYou.name = 'WakaTime Top dev';
+    this.statusBarTeamYou.name = 'DevPulse Top dev';
 
     this.statusBarTeamOther = vscode.window.createStatusBarItem(
-      'com.wakatime.teamother',
+      'com.devpulse.teamother',
       align,
       priority,
     );
-    this.statusBarTeamOther.name = 'WakaTime Team Total';
+    this.statusBarTeamOther.name = 'DevPulse Team Total';
 
-    const showStatusBar = this.config.get('wakatime.status_bar_enabled');
+    const showStatusBar = this.config.get('devpulse.status_bar_enabled');
     this.showStatusBar = showStatusBar !== 'false';
 
-    const showStatusBarTeam = this.config.get('wakatime.status_bar_team');
+    const showStatusBarTeam = this.config.get('devpulse.status_bar_team');
     this.showStatusBarTeam = showStatusBarTeam !== 'false';
 
     this.setStatusBarVisibility(this.showStatusBar);
-    this.updateStatusBarText('WakaTime Initializing...');
+    this.updateStatusBarText('DevPulse Initializing...');
 
     this.checkApiKey();
 
     this.setupEventListeners();
 
-    this.logger.debug('WakaTime initialized.');
+    this.logger.debug('DevPulse initialized.');
 
-    const showCodingActivity = this.config.get('wakatime.status_bar_coding_activity');
+    const showCodingActivity = this.config.get('devpulse.status_bar_coding_activity');
     this.showCodingActivity = showCodingActivity !== 'false';
 
     this.updateStatusBarText();
-    this.updateStatusBarTooltip('WakaTime: Initialized');
+    this.updateStatusBarTooltip('DevPulse: Initialized');
     this.getCodingActivity();
   }
 
@@ -187,11 +188,11 @@ export class WakaTime {
   }
 
   public promptForApiKey(hidden: boolean = true): void {
-    let defaultVal: string = this.config.get('wakatime.apiKey') || '';
+    let defaultVal: string = this.config.get('devpulse.apiKey') || '';
     if (Utils.apiKeyInvalid(defaultVal)) defaultVal = '';
     const promptOptions = {
-      prompt: 'WakaTime Api Key',
-      placeHolder: 'Enter your api key from https://wakatime.com/api-key',
+      prompt: 'DevPulse Api Key',
+      placeHolder: 'Enter your api key from https://devpulse.com/api-key',
       value: defaultVal,
       ignoreFocusOut: true,
       password: hidden,
@@ -200,29 +201,29 @@ export class WakaTime {
     vscode.window.showInputBox(promptOptions).then((val) => {
       if (val != undefined) {
         const invalid = Utils.apiKeyInvalid(val);
-        if (!invalid) this.config.update('wakatime.apiKey', val);
+        if (!invalid) this.config.update('devpulse.apiKey', val);
         else vscode.window.setStatusBarMessage(invalid);
-      } else vscode.window.setStatusBarMessage('WakaTime api key not provided');
+      } else vscode.window.setStatusBarMessage('DevPulse api key not provided');
     });
   }
 
   public promptForApiUrl(): void {
-    const defaultVal: string = this.config.get('wakatime.apiUrl') || '';
+    const defaultVal: string = this.config.get('devpulse.apiUrl') || '';
     const promptOptions = {
-      prompt: 'WakaTime Api Url (Defaults to https://api.wakatime.com/api/v1)',
-      placeHolder: 'https://api.wakatime.com/api/v1',
+      prompt: `DevPulse Api Url (Defaults to ${DEFAULT_API_URL})`,
+      placeHolder: DEFAULT_API_URL,
       value: defaultVal,
       ignoreFocusOut: true,
     };
     vscode.window.showInputBox(promptOptions).then((val) => {
       if (val) {
-        this.config.update('wakatime.apiUrl', val);
+        this.config.update('devpulse.apiUrl', val);
       }
     });
   }
 
   public promptForDebug(): void {
-    let defaultVal: string = this.config.get('wakatime.debug') || '';
+    let defaultVal: string = this.config.get('devpulse.debug') || '';
     if (!defaultVal || defaultVal !== 'true') defaultVal = 'false';
     const items: string[] = ['true', 'false'];
     const promptOptions = {
@@ -232,7 +233,7 @@ export class WakaTime {
     };
     vscode.window.showQuickPick(items, promptOptions).then((newVal) => {
       if (newVal == null) return;
-      this.config.update('wakatime.debug', newVal);
+      this.config.update('devpulse.debug', newVal);
       if (newVal === 'true') {
         this.logger.setLevel(LogLevel.DEBUG);
         this.logger.debug('Debug enabled');
@@ -244,7 +245,7 @@ export class WakaTime {
 
   public promptToDisable(): void {
     const previousValue = this.disabled;
-    let currentVal = this.config.get('wakatime.disabled');
+    let currentVal = this.config.get('devpulse.disabled');
     if (!currentVal || currentVal !== 'true') currentVal = 'false';
     const items: string[] = ['disable', 'enable'];
     const helperText = currentVal === 'true' ? 'disabled' : 'enabled';
@@ -257,11 +258,11 @@ export class WakaTime {
       this.disabled = newVal === 'disable';
       if (this.disabled != previousValue) {
         if (this.disabled) {
-          this.config.update('wakatime.disabled', 'true');
+          this.config.update('devpulse.disabled', 'true');
           this.logger.debug('Extension disabled, will not report code stats to dashboard');
           this.dispose();
         } else {
-          this.config.update('wakatime.disabled', 'false');
+          this.config.update('devpulse.disabled', 'false');
           this.initializeDependencies();
         }
       }
@@ -269,7 +270,7 @@ export class WakaTime {
   }
 
   public promptStatusBarIcon(): void {
-    let defaultVal: string = this.config.get('wakatime.status_bar_enabled') || '';
+    let defaultVal: string = this.config.get('devpulse.status_bar_enabled') || '';
     if (!defaultVal || defaultVal !== 'false') defaultVal = 'true';
     const items: string[] = ['true', 'false'];
     const promptOptions = {
@@ -279,14 +280,14 @@ export class WakaTime {
     };
     vscode.window.showQuickPick(items, promptOptions).then((newVal) => {
       if (newVal !== 'true' && newVal !== 'false') return;
-      this.config.update('wakatime.status_bar_enabled', newVal);
+      this.config.update('devpulse.status_bar_enabled', newVal);
       this.showStatusBar = newVal === 'true'; // cache setting to prevent reading from disc too often
       this.setStatusBarVisibility(this.showStatusBar);
     });
   }
 
   public promptStatusBarCodingActivity(): void {
-    let defaultVal: string = this.config.get('wakatime.status_bar_coding_activity') || '';
+    let defaultVal: string = this.config.get('devpulse.status_bar_coding_activity') || '';
     if (!defaultVal || defaultVal !== 'false') defaultVal = 'true';
     const items: string[] = ['true', 'false'];
     const promptOptions = {
@@ -296,7 +297,7 @@ export class WakaTime {
     };
     vscode.window.showQuickPick(items, promptOptions).then((newVal) => {
       if (newVal !== 'true' && newVal !== 'false') return;
-      this.config.update('wakatime.status_bar_coding_activity', newVal);
+      this.config.update('devpulse.status_bar_coding_activity', newVal);
       if (newVal === 'true') {
         this.logger.debug('Coding activity in status bar has been enabled');
         this.showCodingActivity = true;
@@ -324,12 +325,12 @@ export class WakaTime {
   }
 
   private hasApiKey(callback: (arg0: boolean) => void): void {
-    const apiKey: string = this.config.get('wakatime.apiKey') || '';
+    const apiKey: string = this.config.get('devpulse.apiKey') || '';
     callback(!Utils.apiKeyInvalid(apiKey));
   }
 
   private getStatusBarAlignment(): vscode.StatusBarAlignment {
-    const align: string = this.config.get('wakatime.align') ?? '';
+    const align: string = this.config.get('devpulse.align') ?? '';
     switch (align) {
       case 'left':
         return vscode.StatusBarAlignment.Left;
@@ -341,7 +342,7 @@ export class WakaTime {
   }
 
   private getStatusBarPriority(): number {
-    const priority = this.config.get('wakatime.alignPriority');
+    const priority = this.config.get('devpulse.alignPriority');
     return typeof priority === 'number' ? priority : 1;
   }
 
@@ -649,7 +650,7 @@ export class WakaTime {
     const file = Utils.getFocusedFile(doc);
     if (!file) return;
 
-    // prevent sending the same heartbeat (https://github.com/wakatime/vscode-wakatime/issues/163)
+    // prevent sending the same heartbeat (https://github.com/devpulse/vscode-devpulse/issues/163)
     if (isWrite && this.isDuplicateHeartbeat(file, time, selection)) return;
 
     const now = Date.now();
@@ -738,7 +739,7 @@ export class WakaTime {
 
     this.logger.debug(`Sending heartbeats to API: ${JSON.stringify(payload)}`);
 
-    const apiKey = this.config.get('wakatime.apiKey');
+    const apiKey = this.config.get('devpulse.apiKey');
     const apiUrl = this.getApiUrl();
     const url = `${apiUrl}/users/current/heartbeats.bulk?api_key=${apiKey}`;
 
@@ -757,10 +758,10 @@ export class WakaTime {
       } else {
         this.logger.warn(`API Error ${response.status}: ${parsedJSON}`);
         if (response && response.status == 401) {
-          const error_msg = 'Invalid WakaTime Api Key';
+          const error_msg = 'Invalid DevPulse Api Key';
           if (this.showStatusBar) {
-            this.updateStatusBarText('WakaTime Error');
-            this.updateStatusBarTooltip(`WakaTime: ${error_msg}`);
+            this.updateStatusBarText('DevPulse Error');
+            this.updateStatusBarTooltip(`DevPulse: ${error_msg}`);
           }
           this.logger.error(error_msg);
           const now: number = Date.now();
@@ -772,8 +773,8 @@ export class WakaTime {
         } else {
           const error_msg = `Error sending heartbeats (${response.status}); Check your browser console for more details.`;
           if (this.showStatusBar) {
-            this.updateStatusBarText('WakaTime Error');
-            this.updateStatusBarTooltip(`WakaTime: ${error_msg}`);
+            this.updateStatusBarText('DevPulse Error');
+            this.updateStatusBarTooltip(`DevPulse: ${error_msg}`);
           }
           this.logger.error(error_msg);
         }
@@ -782,8 +783,8 @@ export class WakaTime {
       this.logger.warn(`API Error: ${ex}`);
       const error_msg = `Error sending heartbeats; Check your browser console for more details.`;
       if (this.showStatusBar) {
-        this.updateStatusBarText('WakaTime Error');
-        this.updateStatusBarTooltip(`WakaTime: ${error_msg}`);
+        this.updateStatusBarText('DevPulse Error');
+        this.updateStatusBarTooltip(`DevPulse: ${error_msg}`);
       }
       this.logger.error(error_msg);
     }
@@ -805,7 +806,7 @@ export class WakaTime {
 
   private async _getCodingActivity() {
     this.logger.debug('Fetching coding activity for Today from api.');
-    const apiKey = this.config.get('wakatime.apiKey');
+    const apiKey = this.config.get('devpulse.apiKey');
     const apiUrl = this.getApiUrl();
     const url = `${apiUrl}/users/current/statusbar/today?api_key=${apiKey}`;
     try {
@@ -814,17 +815,17 @@ export class WakaTime {
         headers: {
           'Content-Type': 'application/json',
           'User-Agent':
-            this.agentName + '/' + vscode.version + ' vscode-wakatime/' + this.extension.version,
+            this.agentName + '/' + vscode.version + ' vscode-devpulse/' + this.extension.version,
         },
       });
       const parsedJSON = await response.json();
       if (response.status == 200) {
-        this.config.get('wakatime.status_bar_coding_activity');
+        this.config.get('devpulse.status_bar_coding_activity');
         if (this.showStatusBar) {
           if (parsedJSON.data) this.hasTeamFeatures = parsedJSON.data.has_team_features;
           let output = parsedJSON.data.grand_total.text;
           if (
-            this.config.get('wakatime.status_bar_hide_categories') != 'true' &&
+            this.config.get('devpulse.status_bar_hide_categories') != 'true' &&
             parsedJSON.data.categories.length > 1
           ) {
             output = parsedJSON.data.categories.map((x) => x.text + ' ' + x.name).join(', ');
@@ -833,7 +834,7 @@ export class WakaTime {
             if (this.showCodingActivity) {
               this.updateStatusBarText(output.trim());
               this.updateStatusBarTooltip(
-                'WakaTime: Today’s coding time. Click to visit dashboard.',
+                'DevPulse: Today’s coding time. Click to visit dashboard.',
               );
             } else {
               this.updateStatusBarText();
@@ -841,17 +842,17 @@ export class WakaTime {
             }
           } else {
             this.updateStatusBarText();
-            this.updateStatusBarTooltip('WakaTime: Calculating time spent today in background...');
+            this.updateStatusBarTooltip('DevPulse: Calculating time spent today in background...');
           }
           this.updateTeamStatusBar();
         }
       } else {
         this.logger.warn(`API Error ${response.status}: ${parsedJSON}`);
         if (response && response.status == 401) {
-          const error_msg = 'Invalid WakaTime Api Key';
+          const error_msg = 'Invalid DevPulse Api Key';
           if (this.showStatusBar) {
-            this.updateStatusBarText('WakaTime Error');
-            this.updateStatusBarTooltip(`WakaTime: ${error_msg}`);
+            this.updateStatusBarText('DevPulse Error');
+            this.updateStatusBarTooltip(`DevPulse: ${error_msg}`);
           }
           this.logger.error(error_msg);
         } else {
@@ -886,13 +887,13 @@ export class WakaTime {
     }
 
     this.logger.debug('Fetching devs for currently focused file from api.');
-    const apiKey = this.config.get('wakatime.apiKey');
+    const apiKey = this.config.get('devpulse.apiKey');
     const apiUrl = this.getApiUrl();
     const url = `${apiUrl}/users/current/file_experts?api_key=${apiKey}`;
 
     const payload = {
       entity: file,
-      plugin: this.agentName + '/' + vscode.version + ' vscode-wakatime/' + this.extension.version,
+      plugin: this.agentName + '/' + vscode.version + ' vscode-devpulse/' + this.extension.version,
     };
 
     const project = this.getProjectName();
@@ -909,7 +910,7 @@ export class WakaTime {
         headers: {
           'Content-Type': 'application/json',
           'User-Agent':
-            this.agentName + '/' + vscode.version + ' vscode-wakatime/' + this.extension.version,
+            this.agentName + '/' + vscode.version + ' vscode-devpulse/' + this.extension.version,
         },
         body: JSON.stringify(payload),
       });
@@ -938,7 +939,7 @@ export class WakaTime {
         // make sure this file is still the currently focused file
         if (file !== this.currentlyFocusedFile) return;
 
-        this.config.get('wakatime.status_bar_coding_activity');
+        this.config.get('devpulse.status_bar_coding_activity');
         if (this.showStatusBar) {
           this.updateTeamStatusBarFromJson(devs);
         }
@@ -947,7 +948,7 @@ export class WakaTime {
         this.updateTeamStatusBarTextForOther();
         this.logger.warn(`API Error ${response.status}: ${parsedJSON}`);
         if (response && response.status == 401) {
-          this.logger.error('Invalid WakaTime Api Key');
+          this.logger.error('Invalid DevPulse Api Key');
         } else {
           const error_msg = `Error fetching devs for currently focused file (${response.status}); Check your browser console for more details.`;
           this.logger.debug(error_msg);
@@ -1031,7 +1032,7 @@ export class WakaTime {
   }
 
   private getPlugin(): string {
-    const agent = `${this.agentName}/${vscode.version} vscode-wakatime/${this.extension.version}`;
+    const agent = `${this.agentName}/${vscode.version} vscode-devpulse/${this.extension.version}`;
     const os = this.getOperatingSystem();
     if (os) return `(${os}) ${agent}`;
     return agent;
@@ -1062,7 +1063,7 @@ export class WakaTime {
   }
 
   private getApiUrl(): string {
-    let apiUrl: string = this.config.get('wakatime.apiUrl') || 'https://api.wakatime.com/api/v1';
+    let apiUrl: string = this.config.get('devpulse.apiUrl') || DEFAULT_API_URL;
     const suffixes = ['/', '.bulk', '/users/current/heartbeats', '/heartbeats', '/heartbeat'];
     for (const suffix of suffixes) {
       if (apiUrl.endsWith(suffix)) {
