@@ -167,13 +167,10 @@ export class Axiode {
         (statusBarEnabled: Setting) => {
           this.showStatusBar = statusBarEnabled.value !== 'false';
           this.setStatusBarVisibility(this.showStatusBar);
-    this.updateStatusBarText('Axiode Initializing...');
-    this.logger.debug('Axiode initialized');
-    this.updateStatusBarTooltip('Axiode: Initialized');
-                this.getCodingActivity();
-              });
-            },
-          );
+          this.updateStatusBarText('Axiode Initializing...');
+          this.logger.debug('Axiode initialized');
+          this.updateStatusBarTooltip('Axiode: Initialized');
+          this.getCodingActivity();
         },
       );
     });
@@ -1169,7 +1166,7 @@ export class Axiode {
                 if (this.showCodingActivity) {
                   this.updateStatusBarText(jsonData.text.trim());
                   this.updateStatusBarTooltip(
-                    'Axiode: Today’s coding time. Click to visit dashboard.',
+                    "Axiode: Today's coding time. Click to visit dashboard.",
                   );
                 } else {
                   this.updateStatusBarText();

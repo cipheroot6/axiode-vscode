@@ -20,7 +20,7 @@ import { Axiode } from './wakatime';
 var axiode: Axiode;
 
 export function activate(ctx: vscode.ExtensionContext) {
-  const logger = new Logger('axiode');
+  const logger = new Logger(LogLevel.DEBUG);
   axiode = new Axiode(ctx.extensionPath, logger);
 
   ctx.globalState?.setKeysForSync(['axiode.apiKey']);
