@@ -23,7 +23,7 @@ import { Dependencies } from './dependencies';
 import { Desktop } from './desktop';
 import { Logger } from './logger';
 
-export class DevPulse {
+export class Axiode {
   private editorName: string;
   private extension: any;
   private statusBar?: vscode.StatusBarItem = undefined;
@@ -89,7 +89,7 @@ export class DevPulse {
 
         this.dependencies = new Dependencies(this.options, this.logger, this.resourcesLocation);
 
-        const extension = vscode.extensions.getExtension('devpulse.devpulse-vscode');
+        const extension = vscode.extensions.getExtension('axiode.axiode-vscode');
         this.extension = (extension != undefined && extension.packageJSON) || { version: '0.0.0' };
         this.editorName = Utils.getEditorName();
 
@@ -122,7 +122,7 @@ export class DevPulse {
 
   private setResourcesLocation() {
     const home = Desktop.getHomeDirectory();
-    const folder = path.join(home, '.wakatime');
+    const folder = path.join(home, '.axiode');
 
     try {
       fs.mkdirSync(folder, { recursive: true });
@@ -133,30 +133,30 @@ export class DevPulse {
   }
 
   public initializeDependencies(): void {
-    this.logger.debug(`Initializing DevPulse v${this.extension.version}`);
+    this.logger.debug(`Initializing Axiode v${this.extension.version}`);
 
     const align = this.options.getStatusBarAlignment();
     const priority = this.options.getStatusBarPriority();
 
     this.statusBar = vscode.window.createStatusBarItem(
-      'com.devpulse.statusbar',
+      'com.axiode.statusbar',
       align,
       priority + 2,
     );
-    this.statusBar.name = 'DevPulse';
+    this.statusBar.name = 'Axiode';
     this.statusBar.command = COMMAND_DASHBOARD;
 
     this.statusBarTeamYou = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
       0,
     );
-    this.statusBarTeamYou.name = 'DevPulse Top dev';
+    this.statusBarTeamYou.name = 'Axiode Top dev';
 
     this.statusBarTeamOther = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
       0,
     );
-    this.statusBarTeamOther.name = 'DevPulse Team Total';
+    this.statusBarTeamOther.name = 'Axiode Team Total';
 
     this.options.getSetting('settings', 'status_bar_team', false, (statusBarTeam: Setting) => {
       this.showStatusBarTeam = statusBarTeam.value !== 'false';
@@ -167,9 +167,9 @@ export class DevPulse {
         (statusBarEnabled: Setting) => {
           this.showStatusBar = statusBarEnabled.value !== 'false';
           this.setStatusBarVisibility(this.showStatusBar);
-    this.updateStatusBarText('DevPulse Initializing...');
-    this.logger.debug('DevPulse initialized');
-    this.updateStatusBarTooltip('DevPulse: Initialized');
+    this.updateStatusBarText('Axiode Initializing...');
+    this.logger.debug('Axiode initialized');
+    this.updateStatusBarTooltip('Axiode: Initialized');
                 this.getCodingActivity();
               });
             },
@@ -231,8 +231,8 @@ export class DevPulse {
     let defaultVal = await this.options.getApiKey();
     if (Utils.apiKeyInvalid(defaultVal ?? undefined)) defaultVal = '';
     const promptOptions = {
-      prompt: 'DevPulse Api Key',
-      placeHolder: 'Enter your devpulse api key',
+      prompt: 'Axiode Api Key',
+      placeHolder: 'Enter your axiode api key',
       value: defaultVal!,
       ignoreFocusOut: true,
       password: hidden,
@@ -244,14 +244,14 @@ export class DevPulse {
         if (!invalid) {
           this.options.setSetting('settings', 'api_key', val, false);
         } else vscode.window.setStatusBarMessage(invalid);
-      } else vscode.window.setStatusBarMessage('DevPulse api key not provided');
+      } else vscode.window.setStatusBarMessage('Axiode api key not provided');
     });
   }
 
   public async promptForApiUrl(): Promise<void> {
     const apiUrl = await this.options.getApiUrl(true);
     const promptOptions = {
-      prompt: `DevPulse Api Url (Defaults to ${DEFAULT_API_URL})`,
+      prompt: `Axiode Api Url (Defaults to ${DEFAULT_API_URL})`,
       placeHolder: DEFAULT_API_URL,
       value: apiUrl,
       ignoreFocusOut: true,
@@ -269,7 +269,7 @@ export class DevPulse {
       let defaultVal = proxy.value;
       if (!defaultVal) defaultVal = '';
       const promptOptions = {
-        prompt: 'DevPulse Proxy',
+        prompt: 'Axiode Proxy',
         placeHolder: `Proxy format is https://user:pass@host:port (current value \"${defaultVal}\")`,
         value: defaultVal,
         ignoreFocusOut: true,
@@ -788,7 +788,7 @@ export class DevPulse {
     const file = Utils.getFocusedFile(doc);
     if (!file) return;
 
-    // prevent sending the same heartbeat (https://github.com/wakatime/vscode-devpulse/issues/163)
+    // prevent sending the same heartbeat (https://github.com/wakatime/vscode-axiode/issues/163)
     if (isWrite && this.isDuplicateHeartbeat(file, time, selection)) return;
 
     const now = Date.now();
@@ -833,7 +833,7 @@ export class DevPulse {
       try {
         const tmpFile = path.join(
           os.tmpdir(),
-          `devpulse-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          `axiode-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         );
         await fs.promises.writeFile(tmpFile, doc.getText(), {
           encoding: doc.encoding as BufferEncoding,
@@ -880,7 +880,7 @@ export class DevPulse {
     if (!this.dependencies.isCliInstalled()) return;
 
     const user_agent =
-      this.editorName + '/' + vscode.version + ' vscode-devpulse/' + this.extension.version;
+      this.editorName + '/' + vscode.version + ' vscode-axiode/' + this.extension.version;
     const args = ['--sync-ai-activity', '--plugin', Utils.quote(user_agent)];
 
     if (this.isMetricsEnabled) args.push('--metrics');
@@ -1042,7 +1042,7 @@ export class DevPulse {
         if (this.showStatusBar) {
           if (!this.showCodingActivity) this.updateStatusBarText();
           this.updateStatusBarTooltip(
-            'DevPulse: working offline... coding activity will sync next time we are online',
+            'Axiode: working offline... coding activity will sync next time we are online',
           );
         }
         this.logger.warn(
@@ -1051,15 +1051,15 @@ export class DevPulse {
       } else if (code == 103) {
         const error_msg = `Config parsing error (103); Check your ${this.options.getLogFile()} file for more details`;
         if (this.showStatusBar) {
-          this.updateStatusBarText('DevPulse Error');
-          this.updateStatusBarTooltip(`DevPulse: ${error_msg}`);
+          this.updateStatusBarText('Axiode Error');
+          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
         }
         this.logger.error(error_msg);
       } else if (code == 104) {
         const error_msg = 'Invalid Api Key (104); Make sure your Api Key is correct!';
         if (this.showStatusBar) {
-          this.updateStatusBarText('DevPulse Error');
-          this.updateStatusBarTooltip(`DevPulse: ${error_msg}`);
+          this.updateStatusBarText('Axiode Error');
+          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
         }
         this.logger.error(error_msg);
         const now: number = Date.now();
@@ -1071,8 +1071,8 @@ export class DevPulse {
       } else {
         const error_msg = `Unknown Error (${code}); Check your ${this.options.getLogFile()} file for more details`;
         if (this.showStatusBar) {
-          this.updateStatusBarText('DevPulse Error');
-          this.updateStatusBarTooltip(`DevPulse: ${error_msg}`);
+          this.updateStatusBarText('Axiode Error');
+          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
         }
         this.logger.error(error_msg);
       }
@@ -1112,7 +1112,7 @@ export class DevPulse {
     if (!this.dependencies.isCliInstalled()) return;
 
     const user_agent =
-      this.editorName + '/' + vscode.version + ' vscode-devpulse/' + this.extension.version;
+      this.editorName + '/' + vscode.version + ' vscode-axiode/' + this.extension.version;
     const args = ['--today', '--output', 'json', '--plugin', Utils.quote(user_agent)];
 
     if (this.isMetricsEnabled) args.push('--metrics');
@@ -1169,7 +1169,7 @@ export class DevPulse {
                 if (this.showCodingActivity) {
                   this.updateStatusBarText(jsonData.text.trim());
                   this.updateStatusBarTooltip(
-                    'DevPulse: Today’s coding time. Click to visit dashboard.',
+                    'Axiode: Today’s coding time. Click to visit dashboard.',
                   );
                 } else {
                   this.updateStatusBarText();
@@ -1178,14 +1178,14 @@ export class DevPulse {
               } else {
                 this.updateStatusBarText();
                 this.updateStatusBarTooltip(
-                  'DevPulse: Calculating time spent today in background...',
+                  'Axiode: Calculating time spent today in background...',
                 );
               }
               this.updateTeamStatusBar();
             } else {
               this.updateStatusBarText();
               this.updateStatusBarTooltip(
-                'DevPulse: Calculating time spent today in background...',
+                'Axiode: Calculating time spent today in background...',
               );
             }
           }
@@ -1226,7 +1226,7 @@ export class DevPulse {
     }
 
     const user_agent =
-      this.editorName + '/' + vscode.version + ' vscode-devpulse/' + this.extension.version;
+      this.editorName + '/' + vscode.version + ' vscode-axiode/' + this.extension.version;
     const args = ['--output', 'json', '--plugin', Utils.quote(user_agent)];
 
     args.push('--file-experts', Utils.quote(file));

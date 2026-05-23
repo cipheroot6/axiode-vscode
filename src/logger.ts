@@ -20,14 +20,14 @@ export class Logger {
 
   private static getOutputChannel(): vscode.OutputChannel {
     if (!Logger.outputChannel) {
-      Logger.outputChannel = vscode.window.createOutputChannel('DevPulse');
+      Logger.outputChannel = vscode.window.createOutputChannel('Axiode');
     }
     return Logger.outputChannel;
   }
 
   public log(level: LogLevel, msg: string): void {
     if (level >= this.level) {
-      msg = `[DevPulse][${LogLevel[level]}] ${msg}`;
+      msg = `[Axiode][${LogLevel[level]}] ${msg}`;
       if (vscode.env.appName === 'Cursor') {
         try {
           Logger.getOutputChannel().appendLine(msg);

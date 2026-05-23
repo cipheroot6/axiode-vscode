@@ -23,9 +23,9 @@ export class Options {
 
   constructor(logger: Logger, resourcesFolder: string) {
     this.logger = logger;
-    this.configFile = path.join(Desktop.getHomeDirectory(), '.wakatime.cfg');
-    this.internalConfigFile = path.join(resourcesFolder, 'devpulse-internal.cfg');
-    this.logFile = path.join(resourcesFolder, 'devpulse.log');
+    this.configFile = path.join(Desktop.getHomeDirectory(), '.axiode.cfg');
+    this.internalConfigFile = path.join(resourcesFolder, 'axiode-internal.cfg');
+    this.logFile = path.join(resourcesFolder, 'axiode.log');
   }
 
   public async getSettingAsync<T = any>(section: string, key: string): Promise<T> {
@@ -220,7 +220,7 @@ export class Options {
     if (!Utils.apiKeyInvalid(keyFromEnv)) {
       if (this.cache.api_key && this.cache.api_key !== keyFromEnv) {
         vscode.window.showErrorMessage(
-          `DevPulse API Key conflict. Your env key doesn't match your ${from} key.`,
+          `Axiode API Key conflict. Your env key doesn't match your ${from} key.`,
         );
         return this.cache.api_key;
       }
@@ -233,7 +233,7 @@ export class Options {
       if (!Utils.apiKeyInvalid(apiKeyFromVault)) {
         if (this.cache.api_key && this.cache.api_key !== apiKeyFromVault) {
           vscode.window.showErrorMessage(
-            `DevPulse API Key conflict. Your vault command key doesn't match your ${from} key.`,
+            `Axiode API Key conflict. Your vault command key doesn't match your ${from} key.`,
           );
           return this.cache.api_key;
         }
@@ -247,7 +247,7 @@ export class Options {
       if (!Utils.apiKeyInvalid(apiKey)) {
         if (this.cache.api_key && this.cache.api_key !== apiKey) {
           vscode.window.showErrorMessage(
-            `DevPulse API Key conflict. Your ~/.devpulse.cfg key doesn't match your ${from} key.`,
+            `Axiode API Key conflict. Your ~/.axiode.cfg key doesn't match your ${from} key.`,
           );
         }
         this.cache.api_key = apiKey;
@@ -256,7 +256,7 @@ export class Options {
       this.logger.debug(`Exception while reading API Key from config file: ${err}`);
       if (!this.cache.api_key && `${err}`.includes('spawn EPERM')) {
         vscode.window.showErrorMessage(
-          'Microsoft Defender is blocking DevPulse. Please allow DevPulse to run so it can upload code stats to your dashboard.',
+          'Microsoft Defender is blocking Axiode. Please allow Axiode to run so it can upload code stats to your dashboard.',
         );
       }
     }
@@ -266,8 +266,8 @@ export class Options {
 
   public async getApiKeyFromVaultCmd(): Promise<string> {
     try {
-      // Use basically the same logic as devpulse-cli to interpret cmdStr
-      // https://github.com/devpulse/devpulse-cli/blob/1fd560a/cmd/params/params.go#L697
+      // Use basically the same logic as axiode-cli to interpret cmdStr
+      // https://github.com/axiode/axiode-cli/blob/1fd560a/cmd/params/params.go#L697
       const cmdStr = await this.getSettingAsync<string>('settings', 'api_key_vault_cmd');
       if (!cmdStr?.trim()) return '';
 
@@ -303,15 +303,15 @@ export class Options {
   }
 
   public getApiKeyFromEditor(): string {
-    return vscode.workspace.getConfiguration().get('devpulse.apiKey') || '';
+    return vscode.workspace.getConfiguration().get('axiode.apiKey') || '';
   }
 
   private getApiUrlFromEditor(): string {
-    return vscode.workspace.getConfiguration().get('devpulse.apiUrl') || '';
+    return vscode.workspace.getConfiguration().get('axiode.apiUrl') || '';
   }
 
   public getStatusBarAlignment(): vscode.StatusBarAlignment {
-    const align: string = vscode.workspace.getConfiguration().get('devpulse.align') ?? '';
+    const align: string = vscode.workspace.getConfiguration().get('axiode.align') ?? '';
     switch (align) {
       case 'left':
         return vscode.StatusBarAlignment.Left;
@@ -323,15 +323,15 @@ export class Options {
   }
 
   public getStatusBarPriority(): number {
-    const priority = vscode.workspace.getConfiguration().get('devpulse.alignPriority');
+    const priority = vscode.workspace.getConfiguration().get('axiode.alignPriority');
     return typeof priority === 'number' ? priority : 1;
   }
 
-  // Support for gitpod.io https://github.com/devpulse/vscode-devpulse/pull/220
+  // Support for gitpod.io https://github.com/axiode/vscode-axiode/pull/220
   public getApiKeyFromEnv(): string {
     if (this.cache.api_key_from_env !== undefined) return this.cache.api_key_from_env;
 
-    this.cache.api_key_from_env = process.env.WAKATIME_API_KEY || '';
+    this.cache.api_key_from_env = process.env.AXIODE_API_KEY || process.env.WAKATIME_API_KEY || '';
 
     return this.cache.api_key_from_env;
   }

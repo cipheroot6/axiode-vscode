@@ -228,7 +228,7 @@ export class Utils {
     aiName: string | undefined = undefined,
   ): string {
     const ai = aiName ? ` ${aiName}` : '';
-    return editorName + '/' + vscode.version + ai + ' vscode-devpulse/' + extensionVersion;
+    return editorName + '/' + vscode.version + ai + ' vscode-axiode/' + extensionVersion;
   }
 
   public static withinSeconds(

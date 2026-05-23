@@ -164,7 +164,7 @@ export class Dependencies {
           url: this.githubReleasesUrl,
           json: true,
           headers: {
-            'User-Agent': 'github.com/devpulse/devpulse-vscode',
+            'User-Agent': 'github.com/axiode/axiode-vscode',
           },
         };
         this.logger.debug(`Fetching latest wakatime-cli version from GitHub API: ${options.url}`);

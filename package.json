@@ -1,11 +1,11 @@
 {
-  "name": "devpulse-vscode",
-  "displayName": "DevPulse",
-  "description": "Real-time developer activity tracking for DevPulse — sessions, projects, and productivity insights.",
+  "name": "axiode-vscode",
+  "displayName": "Axiode",
+  "description": "Real-time developer activity tracking for Axiode — sessions, projects, and productivity insights.",
   "version": "1.0.0",
-  "publisher": "devpulse",
+  "publisher": "axiode",
   "author": {
-    "name": "DevPulse"
+    "name": "Axiode"
   },
   "categories": [
     "Visualization",
@@ -20,14 +20,13 @@
     "focus",
     "metrics",
     "productivity",
-    "devpulse",
-    "dev-pulse",
+    "axiode",
     "time tracking",
     "tracking"
   ],
-  "homepage": "https://dev-pulse-application.vercel.app",
+  "homepage": "https://axiode.vercel.app",
   "license": "BSD-3-Clause",
-  "icon": "images/devpulse-logo.png",
+  "icon": "images/axiode-logo.png",
   "galleryBanner": {
     "color": "#AEC3D8",
     "theme": "light"
@@ -40,7 +39,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/cipheroot/devpulse-vscode.git"
+    "url": "https://github.com/cipheroot/axiode-vscode.git"
   },
   "engines": {
     "vscode": "^1.89.0"
@@ -58,60 +57,60 @@
   "contributes": {
     "commands": [
       {
-        "command": "devpulse.apikey",
-        "title": "DevPulse: Api Key"
+        "command": "axiode.apikey",
+        "title": "Axiode: Api Key"
       },
       {
-        "command": "devpulse.apiurl",
-        "title": "DevPulse: Api Url"
+        "command": "axiode.apiurl",
+        "title": "Axiode: Api Url"
       },
       {
-        "command": "devpulse.proxy",
-        "title": "DevPulse: Proxy"
+        "command": "axiode.proxy",
+        "title": "Axiode: Proxy"
       },
       {
-        "command": "devpulse.debug",
-        "title": "DevPulse: Debug"
+        "command": "axiode.debug",
+        "title": "Axiode: Debug"
       },
       {
-        "command": "devpulse.disable",
-        "title": "DevPulse: Enable/Disable Extension"
+        "command": "axiode.disable",
+        "title": "Axiode: Enable/Disable Extension"
       },
       {
-        "command": "devpulse.status_bar_enabled",
-        "title": "DevPulse: Status Bar Enabled"
+        "command": "axiode.status_bar_enabled",
+        "title": "Axiode: Status Bar Enabled"
       },
       {
-        "command": "devpulse.status_bar_coding_activity",
-        "title": "DevPulse: Status Bar Coding Activity"
+        "command": "axiode.status_bar_coding_activity",
+        "title": "Axiode: Status Bar Coding Activity"
       },
       {
-        "command": "devpulse.dashboard",
-        "title": "DevPulse: Open Dashboard"
+        "command": "axiode.dashboard",
+        "title": "Axiode: Open Dashboard"
       },
       {
-        "command": "devpulse.config_file",
-        "title": "DevPulse: Open Config File..."
+        "command": "axiode.config_file",
+        "title": "Axiode: Open Config File..."
       },
       {
-        "command": "devpulse.log_file",
-        "title": "DevPulse: Open Log File..."
+        "command": "axiode.log_file",
+        "title": "Axiode: Open Log File..."
       }
     ],
     "configuration": {
-      "title": "DevPulse",
+      "title": "Axiode",
       "properties": {
-        "devpulse.apiKey": {
+        "axiode.apiKey": {
           "type": "string",
-          "description": "Defaults to value from ~/.devpulse.cfg, unless running in browser.",
+          "description": "Defaults to value from ~/.axiode.cfg, unless running in browser.",
           "scope": "application"
         },
-        "devpulse.apiUrl": {
+        "axiode.apiUrl": {
           "type": "string",
-          "description": "Defaults to https://dev-pulse-application.vercel.app/api/v1.",
+          "description": "Defaults to https://axiode.vercel.app/api/v1.",
           "scope": "application"
         },
-        "devpulse.align": {
+        "axiode.align": {
           "type": "string",
           "enum": [
             "left",
@@ -120,7 +119,7 @@
           "default": "left",
           "description": "Defines the alignment of the status bar item, requires restart of VS Code"
         },
-        "devpulse.alignPriority": {
+        "axiode.alignPriority": {
           "type": "number",
           "default": 1,
           "description": "Defines priority of the status bar item. Higher values mean the item should be shown more to the left, requires restart of VS Code"

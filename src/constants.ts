@@ -33,16 +33,16 @@ export const COMMON_AI_EXTENSIONS: AIExtension[] = [
   },
 ];
 
-export const COMMAND_API_KEY = 'devpulse.apikey';
-export const COMMAND_API_URL = 'devpulse.apiurl';
-export const COMMAND_CONFIG_FILE = 'devpulse.config_file';
-export const COMMAND_DASHBOARD = 'devpulse.dashboard';
-export const COMMAND_DEBUG = 'devpulse.debug';
-export const COMMAND_DISABLE = 'devpulse.disable';
-export const COMMAND_LOG_FILE = 'devpulse.log_file';
-export const COMMAND_PROXY = 'devpulse.proxy';
-export const COMMAND_STATUS_BAR_CODING_ACTIVITY = 'devpulse.status_bar_coding_activity';
-export const COMMAND_STATUS_BAR_ENABLED = 'devpulse.status_bar_enabled';
+export const COMMAND_API_KEY = 'axiode.apikey';
+export const COMMAND_API_URL = 'axiode.apiurl';
+export const COMMAND_CONFIG_FILE = 'axiode.config_file';
+export const COMMAND_DASHBOARD = 'axiode.dashboard';
+export const COMMAND_DEBUG = 'axiode.debug';
+export const COMMAND_DISABLE = 'axiode.disable';
+export const COMMAND_LOG_FILE = 'axiode.log_file';
+export const COMMAND_PROXY = 'axiode.proxy';
+export const COMMAND_STATUS_BAR_CODING_ACTIVITY = 'axiode.status_bar_coding_activity';
+export const COMMAND_STATUS_BAR_ENABLED = 'axiode.status_bar_enabled';
 export enum LogLevel {
   DEBUG = 0,
   INFO,
@@ -50,7 +50,7 @@ export enum LogLevel {
   ERROR,
 }
 
-export const DEFAULT_API_URL = 'https://dev-pulse-application.vercel.app/api/v1';
+export const DEFAULT_API_URL = 'https://axiode.vercel.app/api/v1';
 export const TIME_BETWEEN_HEARTBEATS_MS = 120000;
 export const SEND_BUFFER_SECONDS = 30;
 export const AI_RECENT_PASTES_TIME_MS = 500;
