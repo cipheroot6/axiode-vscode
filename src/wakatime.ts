@@ -168,9 +168,14 @@ export class Axiode {
           this.showStatusBar = statusBarEnabled.value !== 'false';
           this.setStatusBarVisibility(this.showStatusBar);
           this.updateStatusBarText('Axiode Initializing...');
-          this.logger.debug('Axiode initialized');
-          this.updateStatusBarTooltip('Axiode: Initialized');
-          this.getCodingActivity();
+          this.updateStatusBarTooltip('Axiode: Initializing...');
+          this.dependencies.checkAndInstallCli(() => {
+            this.logger.debug('Axiode initialized');
+            this.updateStatusBarTooltip('Axiode: Initialized');
+            this.checkApiKey();
+            this.setupEventListeners();
+            this.getCodingActivity();
+          });
         },
       );
     });
@@ -240,6 +245,8 @@ export class Axiode {
         const invalid = Utils.apiKeyInvalid(val);
         if (!invalid) {
           this.options.setSetting('settings', 'api_key', val, false);
+          this.options.clearApiKeyCache();
+          this.getCodingActivity();
         } else vscode.window.setStatusBarMessage(invalid);
       } else vscode.window.setStatusBarMessage('Axiode api key not provided');
     });
@@ -1097,10 +1104,10 @@ export class Axiode {
     const cutoff = Date.now() - this.fetchTodayInterval;
     if (this.lastFetchToday > cutoff) return;
 
-    this.lastFetchToday = Date.now();
-
     const apiKey = await this.options.getApiKey();
     if (!apiKey) return;
+
+    this.lastFetchToday = Date.now();
 
     await this._getCodingActivity();
   }

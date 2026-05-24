@@ -820,13 +820,12 @@ export class Axiode {
       });
       const parsedJSON = await response.json();
       if (response.status == 200) {
-        this.config.get('axiode.status_bar_coding_activity');
         if (this.showStatusBar) {
           if (parsedJSON.data) this.hasTeamFeatures = parsedJSON.data.has_team_features;
-          let output = parsedJSON.data.grand_total.text;
+          let output = parsedJSON.data?.grand_total?.text;
           if (
             this.config.get('axiode.status_bar_hide_categories') != 'true' &&
-            parsedJSON.data.categories.length > 1
+            parsedJSON.data?.categories?.length > 1
           ) {
             output = parsedJSON.data.categories.map((x) => x.text + ' ' + x.name).join(', ');
           }

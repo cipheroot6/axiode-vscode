@@ -66,7 +66,7 @@ export class Options {
               let parts = line.split('=');
               let currentKey = parts[0].trim();
               if (currentKey === key && parts.length > 1) {
-                callback({ key: key, value: this.removeNulls(parts[1].trim()) });
+                callback({ key: key, value: this.removeNulls(parts.slice(1).join('=').trim()) });
                 return;
               }
             }
@@ -376,6 +376,10 @@ export class Options {
     this.cache.api_url_from_env = process.env.WAKATIME_API_URL || '';
 
     return this.cache.api_url_from_env;
+  }
+
+  public clearApiKeyCache(): void {
+    this.cache.api_key = undefined;
   }
 
   public hasApiKey(callback: (valid: boolean) => void): void {

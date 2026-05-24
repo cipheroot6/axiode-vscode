@@ -213,7 +213,9 @@ export class Dependencies {
       () => {
         this.extractCli(zipFile, callback);
       },
-      callback,
+      () => {
+        this.logger.warn('Failed to download wakatime-cli. Will retry on next start.');
+      },
     );
   }
 
@@ -256,9 +258,9 @@ export class Dependencies {
           }
         }
       }
+      this.logger.debug('Finished extracting wakatime-cli.');
       callback();
     });
-    this.logger.debug('Finished extracting wakatime-cli.');
   }
 
   private backupCli() {
