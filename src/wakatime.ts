@@ -966,7 +966,10 @@ export class Axiode {
 
       if (response.ok) {
         this.logger.debug(`Heartbeat(s) sent successfully (${response.status})`);
-        if (this.showStatusBar) this.getCodingActivity();
+        if (this.showStatusBar) {
+          this.lastFetchToday = 0; // force immediate status bar refresh after successful heartbeat
+          this.getCodingActivity();
+        }
       } else if (response.status === 401 || response.status === 403) {
         const error_msg = 'Invalid Api Key (401); Make sure your Api Key is correct!';
         if (this.showStatusBar) {

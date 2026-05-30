@@ -52,7 +52,7 @@ export enum LogLevel {
 
 export const DEFAULT_API_URL = 'https://axiode.vercel.app/api/v1';
 export const TIME_BETWEEN_HEARTBEATS_MS = 120000;
-export const SEND_BUFFER_SECONDS = 30;
+export const SEND_BUFFER_SECONDS = 120;
 export const AI_RECENT_PASTES_TIME_MS = 500;
 export const SYNC_AI_HEARTBEATS_DEBOUNCE_SECONDS = 120;
 
