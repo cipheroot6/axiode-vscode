@@ -16,7 +16,7 @@ import {
   SYNC_AI_HEARTBEATS_DEBOUNCE_SECONDS,
 } from './constants';
 import { FileSelectionMap, HumanTypingMap, LineCounts, LinesInFiles } from './types';
-import { Utils } from './utils';
+import { Utils, safeFetch } from './utils';
 import { Options, Setting } from './options';
 
 import { Dependencies } from './dependencies';
@@ -166,6 +166,8 @@ export class Axiode {
         false,
         (statusBarEnabled: Setting) => {
           this.showStatusBar = statusBarEnabled.value !== 'false';
+          this.showCodingActivity =
+            vscode.workspace.getConfiguration().get('axiode.status_bar_coding_activity') !== 'false';
           this.setStatusBarVisibility(this.showStatusBar);
           this.updateStatusBarText('Axiode Initializing...');
           this.updateStatusBarTooltip('Axiode: Initializing...');
@@ -244,8 +246,11 @@ export class Axiode {
       if (val != undefined) {
         const invalid = Utils.apiKeyInvalid(val);
         if (!invalid) {
+          // Save to both VS Code settings (primary) and config file (fallback)
+          vscode.workspace.getConfiguration().update('axiode.apiKey', val, vscode.ConfigurationTarget.Global);
           this.options.setSetting('settings', 'api_key', val, false);
           this.options.clearApiKeyCache();
+          this.lastFetchToday = 0;
           this.getCodingActivity();
         } else vscode.window.setStatusBarMessage(invalid);
       } else vscode.window.setStatusBarMessage('Axiode api key not provided');
@@ -428,6 +433,16 @@ export class Axiode {
   private setupEventListeners(): void {
     // subscribe to selection change and editor activation events
     const subscriptions: vscode.Disposable[] = [];
+
+    // When user changes axiode.apiKey in Settings UI, pick it up immediately
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('axiode.apiKey')) {
+        this.options.clearApiKeyCache();
+        this.lastFetchToday = 0; // force immediate status bar refresh
+        this.getCodingActivity();
+      }
+    }, this, subscriptions);
+
     vscode.window.onDidChangeTextEditorSelection(this.onChangeSelection, this, subscriptions);
     vscode.window.onDidChangeTextEditorVisibleRanges(
       this.onDidChangeTextEditorVisibleRanges,
@@ -591,7 +606,6 @@ export class Axiode {
 
   private async appendCodeReviewHeartbeat(): Promise<void> {
     if (this.disabled) return;
-    if (!this.dependencies.isCliInstalled()) return;
 
     const time = Date.now();
     if (this.lastCodeReviewing && !Utils.enoughTimePassed(this.lastHeartbeat, time)) return;
@@ -609,6 +623,7 @@ export class Axiode {
     };
 
     if (doc) {
+      heartbeat.language = doc.languageId;
       heartbeat.lines_in_file = doc.lineCount;
       if (editor) {
         heartbeat.lineno = editor.selection.start.line + 1;
@@ -787,8 +802,6 @@ export class Axiode {
     isDebugging: boolean,
     isAICoding: boolean,
   ): Promise<void> {
-    if (!this.dependencies.isCliInstalled()) return;
-
     const file = Utils.getFocusedFile(doc);
     if (!file) return;
 
@@ -804,6 +817,7 @@ export class Axiode {
       lineno: selection.line + 1,
       cursorpos: selection.character + 1,
       lines_in_file: doc.lineCount,
+      language: doc.languageId,
       ai_line_changes: this.lineChanges.ai[file],
       human_line_changes: this.lineChanges.human[file],
     };
@@ -881,212 +895,123 @@ export class Axiode {
   }
 
   private async syncAIHeartbeats(): Promise<void> {
-    if (!this.dependencies.isCliInstalled()) return;
-
-    const user_agent =
-      this.editorName + '/' + vscode.version + ' vscode-axiode/' + this.extension.version;
-    const args = ['--sync-ai-activity', '--plugin', Utils.quote(user_agent)];
-
-    if (this.isMetricsEnabled) args.push('--metrics');
-
-    const doc = vscode.window.activeTextEditor?.document;
-    if (doc) {
-      const project = this.getProjectName(doc.uri);
-      if (project) {
-        args.push('--alternate-project');
-        args.push(project);
-      }
-      const folder = this.getProjectFolder(doc.uri);
-      if (folder) {
-        args.push('--project-folder');
-        args.push(folder);
-      }
-    }
-
-    const apiKey = await this.options.getApiKey();
-    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
-
-    const apiUrl = await this.options.getApiUrl();
-    if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
-
-    if (Desktop.isWindows() || Desktop.isPortable()) {
-      args.push(
-        '--config',
-        Utils.quote(this.options.getConfigFile(false)),
-        '--log-file',
-        Utils.quote(this.options.getLogFile()),
-      );
-    }
-
-    const binary = this.dependencies.getCliLocation();
-    this.logger.debug(`Syncing AI heartbeats: ${Utils.formatArguments(binary, args)}`);
-    const options = Desktop.buildOptions();
-
-    try {
-      child_process.execFile(binary, args, options, (error, stdout, stderr) => {
-        if (error != null) {
-          if (stderr && stderr.toString() != '') this.logger.debug(stderr.toString());
-          if (stdout && stdout.toString() != '') this.logger.debug(stdout.toString());
-          this.logger.debug(error.toString());
-        }
-      });
-    } catch (e) {
-      this.logger.debugException(e);
-    }
+    // AI heartbeats are already sent via _sendHeartbeats with ai_line_changes field
+    // Nothing extra to sync — this is handled in the main heartbeat payload
+    this.logger.debug('AI heartbeats sync: handled via main heartbeat payload');
   }
 
   private async _sendHeartbeats(): Promise<void> {
-    if (!this.dependencies.isCliInstalled()) return;
-
     const heartbeat = this.heartbeats.shift();
     if (!heartbeat) return;
 
     this.lastSent = Date.now();
 
-    const args: string[] = [];
-
-    args.push('--entity', Utils.quote(heartbeat.entity));
-
-    if (heartbeat.entity_type) {
-      args.push('--entity-type', heartbeat.entity_type);
-    }
-
-    args.push('--time', String(heartbeat.time));
-
-    if (heartbeat.plugin) {
-      args.push('--plugin', Utils.quote(heartbeat.plugin));
-    } else {
-      args.push(
-        '--plugin',
-        Utils.quote(
-          Utils.buildUserAgentString(this.editorName, this.extension.version, heartbeat.agent),
-        ),
-      );
-    }
-
-    if (heartbeat.lineno) args.push('--lineno', String(heartbeat.lineno));
-    if (heartbeat.cursorpos) args.push('--cursorpos', String(heartbeat.cursorpos));
-    if (heartbeat.lines_in_file) args.push('--lines-in-file', String(heartbeat.lines_in_file));
-    if (heartbeat.category) {
-      args.push('--category', heartbeat.category);
-    }
-
-    if (heartbeat.ai_line_changes) {
-      args.push('--ai-line-changes', String(heartbeat.ai_line_changes));
-    }
-    if (heartbeat.human_line_changes) {
-      args.push('--human-line-changes', String(heartbeat.human_line_changes));
-    }
-
-    if (this.isMetricsEnabled) args.push('--metrics');
+    const extraHeartbeats = this.getExtraHeartbeats();
+    const allHeartbeats = [heartbeat, ...extraHeartbeats];
 
     const apiKey = await this.options.getApiKey();
-    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
-
-    const apiUrl = await this.options.getApiUrl();
-    if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
-
-    if (heartbeat.alternate_project) {
-      args.push('--alternate-project', Utils.quote(heartbeat.alternate_project));
+    if (!apiKey) {
+      await this.promptForApiKey();
+      return;
     }
 
-    if (heartbeat.project_folder) {
-      args.push('--project-folder', Utils.quote(heartbeat.project_folder));
-    }
+    const apiUrl = await this.options.getApiUrl(true);
 
-    if (heartbeat.is_write) args.push('--write');
-
-    if (Desktop.isWindows() || Desktop.isPortable()) {
-      args.push(
-        '--config',
-        Utils.quote(this.options.getConfigFile(false)),
-        '--log-file',
-        Utils.quote(this.options.getLogFile()),
-      );
-    }
-
-    if (heartbeat.is_unsaved_entity) args.push('--is-unsaved-entity');
-
-    const cleanup: string[] = [];
-    if (heartbeat.local_file) {
-      args.push('--local-file');
-      args.push(Utils.quote(heartbeat.local_file));
-      cleanup.push(heartbeat.local_file);
-    }
-
-    const extraHeartbeats = this.getExtraHeartbeats();
-    if (extraHeartbeats.length > 0) args.push('--extra-heartbeats');
-
-    const binary = this.dependencies.getCliLocation();
-    this.logger.debug(`Sending heartbeat: ${Utils.formatArguments(binary, args)}`);
-    const options = Desktop.buildOptions(extraHeartbeats.length > 0);
-    const proc = child_process.execFile(binary, args, options, (error, stdout, stderr) => {
-      if (error != null) {
-        if (stderr && stderr.toString() != '') this.logger.error(stderr.toString());
-        if (stdout && stdout.toString() != '') this.logger.error(stdout.toString());
-        this.logger.error(error.toString());
-      }
+    const toPayload = (h: Heartbeat) => ({
+      entity: h.entity,
+      type: h.entity_type || 'file',
+      time: h.time,
+      is_write: h.is_write,
+      ...(h.lineno && { lineno: h.lineno }),
+      ...(h.cursorpos && { cursorpos: h.cursorpos }),
+      ...(h.lines_in_file && { lines_in_file: h.lines_in_file }),
+      ...(h.category && { category: h.category }),
+      ...(h.alternate_project && { project: h.alternate_project }),
+      ...(h.project_folder && { project_root_count: 1, branch: undefined }),
+      ...(h.language && { language: h.language }),
+      ...(h.ai_line_changes && { ai_line_changes: h.ai_line_changes }),
+      ...(h.human_line_changes && { human_line_changes: h.human_line_changes }),
+      ...(h.is_unsaved_entity && { is_unsaved_entity: true }),
+      ...(h.plugin
+        ? { plugin: h.plugin }
+        : {
+            plugin: Utils.buildUserAgentString(
+              this.editorName,
+              this.extension.version,
+              h.agent,
+            ),
+          }),
     });
 
-    // send any extra heartbeats
-    if (proc.stdin) {
-      proc.stdin.write(JSON.stringify(extraHeartbeats));
-      proc.stdin.write('\n');
-      proc.stdin.end();
-      cleanup.push(...(extraHeartbeats.map((h) => h.local_file).filter(Boolean) as string[]));
-    } else if (extraHeartbeats.length > 0) {
-      this.logger.error('Unable to set stdio[0] to pipe');
-      this.heartbeats.push(...extraHeartbeats);
-    }
+    const payload = allHeartbeats.map(toPayload);
+    const cleanup = allHeartbeats
+      .map((h) => h.local_file)
+      .filter(Boolean) as string[];
 
-    proc.on('close', async (code, _signal) => {
-      if (code == 0) {
+    try {
+      const response = await safeFetch(
+        allHeartbeats.length === 1
+          ? `${apiUrl}/users/current/heartbeats`
+          : `${apiUrl}/users/current/heartbeats.bulk`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'User-Agent': `${this.editorName}/${vscode.version} vscode-axiode/${this.extension.version}`,
+          },
+          body: JSON.stringify(allHeartbeats.length === 1 ? payload[0] : payload),
+        },
+      );
+
+      if (response.ok) {
+        this.logger.debug(`Heartbeat(s) sent successfully (${response.status})`);
         if (this.showStatusBar) this.getCodingActivity();
-      } else if (code == 102 || code == 112) {
+      } else if (response.status === 401 || response.status === 403) {
+        const error_msg = 'Invalid Api Key (401); Make sure your Api Key is correct!';
+        if (this.showStatusBar) {
+          this.updateStatusBarText('Axiode Error');
+          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
+        }
+        this.logger.error(error_msg);
+        const now = Date.now();
+        if (this.lastApiKeyPrompted < now - 86400000) {
+          await this.promptForApiKey(false);
+          this.lastApiKeyPrompted = now;
+        }
+      } else if (response.status === 0 || response.status >= 500) {
         if (this.showStatusBar) {
           if (!this.showCodingActivity) this.updateStatusBarText();
           this.updateStatusBarTooltip(
             'Axiode: working offline... coding activity will sync next time we are online',
           );
         }
-        this.logger.warn(
-          `Working offline (${code}); Check your ${this.options.getLogFile()} file for more details`,
-        );
-      } else if (code == 103) {
-        const error_msg = `Config parsing error (103); Check your ${this.options.getLogFile()} file for more details`;
-        if (this.showStatusBar) {
-          this.updateStatusBarText('Axiode Error');
-          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
-        }
-        this.logger.error(error_msg);
-      } else if (code == 104) {
-        const error_msg = 'Invalid Api Key (104); Make sure your Api Key is correct!';
-        if (this.showStatusBar) {
-          this.updateStatusBarText('Axiode Error');
-          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
-        }
-        this.logger.error(error_msg);
-        const now: number = Date.now();
-        if (this.lastApiKeyPrompted < now - 86400000) {
-          // only prompt once per day
-          await this.promptForApiKey(false);
-          this.lastApiKeyPrompted = now;
-        }
+        this.logger.warn(`Working offline (${response.status})`);
+        // re-queue heartbeats so they aren't lost
+        this.heartbeats.unshift(...allHeartbeats);
       } else {
-        const error_msg = `Unknown Error (${code}); Check your ${this.options.getLogFile()} file for more details`;
+        const error_msg = `Error sending heartbeat (${response.status})`;
         if (this.showStatusBar) {
           this.updateStatusBarText('Axiode Error');
           this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
         }
         this.logger.error(error_msg);
       }
-
-      cleanup.map((tmpfile) => {
-        try {
-          fs.unlinkSync(tmpfile);
-        } catch (_) {}
+    } catch (e) {
+      this.logger.debugException(e);
+      if (this.showStatusBar) {
+        if (!this.showCodingActivity) this.updateStatusBarText();
+        this.updateStatusBarTooltip(
+          'Axiode: working offline... coding activity will sync next time we are online',
+        );
+      }
+      // re-queue heartbeats so they aren't lost
+      this.heartbeats.unshift(...allHeartbeats);
+    } finally {
+      cleanup.forEach((tmpfile) => {
+        try { fs.unlinkSync(tmpfile); } catch (_) {}
       });
-    });
+    }
   }
 
   private getExtraHeartbeats() {
@@ -1113,96 +1038,63 @@ export class Axiode {
   }
 
   private async _getCodingActivity() {
-    if (!this.dependencies.isCliInstalled()) return;
-
-    const user_agent =
-      this.editorName + '/' + vscode.version + ' vscode-axiode/' + this.extension.version;
-    const args = ['--today', '--output', 'json', '--plugin', Utils.quote(user_agent)];
-
-    if (this.isMetricsEnabled) args.push('--metrics');
-
     const apiKey = await this.options.getApiKey();
-    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
+    if (!apiKey) return;
 
-    const apiUrl = await this.options.getApiUrl();
-    if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
+    const apiUrl = await this.options.getApiUrl(true);
 
-    if (Desktop.isWindows()) {
-      args.push(
-        '--config',
-        Utils.quote(this.options.getConfigFile(false)),
-        '--logfile',
-        Utils.quote(this.options.getLogFile()),
-      );
-    }
-
-    const binary = this.dependencies.getCliLocation();
-    this.logger.debug(
-      `Fetching coding activity for Today from api: ${Utils.formatArguments(binary, args)}`,
-    );
-    const options = Desktop.buildOptions();
+    this.logger.debug(`Fetching coding activity for Today from api: ${apiUrl}`);
 
     try {
-      const proc = child_process.execFile(binary, args, options, (error, stdout, stderr) => {
-        if (error != null) {
-          if (stderr && stderr.toString() != '') this.logger.debug(stderr.toString());
-          if (stdout && stdout.toString() != '') this.logger.debug(stdout.toString());
-          this.logger.debug(error.toString());
-        }
+      const response = await safeFetch(`${apiUrl}/users/current/statusbar/today`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'User-Agent': `${this.editorName}/${vscode.version} vscode-axiode/${this.extension.version}`,
+          'X-Timezone-Offset': String(new Date().getTimezoneOffset()),
+        },
       });
-      let output = '';
-      if (proc.stdout) {
-        proc.stdout.on('data', (data: string | null) => {
-          if (data) output += data;
-        });
-      }
-      proc.on('close', (code, _signal) => {
-        if (code == 0) {
-          if (this.showStatusBar) {
-            if (output) {
-              let jsonData: any;
-              try {
-                jsonData = JSON.parse(output);
-              } catch (e) {
-                this.logger.debug(
-                  `Error parsing today coding activity as json:\n${output}\nCheck your ${this.options.getLogFile()} file for more details.`,
-                );
-              }
-              if (jsonData) this.hasTeamFeatures = jsonData?.has_team_features;
-              if (jsonData?.text) {
-                if (this.showCodingActivity) {
-                  this.updateStatusBarText(jsonData.text.trim());
-                  this.updateStatusBarTooltip(
-                    "Axiode: Today's coding time. Click to visit dashboard.",
-                  );
-                } else {
-                  this.updateStatusBarText();
-                  this.updateStatusBarTooltip(jsonData.text.trim());
-                }
-              } else {
-                this.updateStatusBarText();
-                this.updateStatusBarTooltip(
-                  'Axiode: Calculating time spent today in background...',
-                );
-              }
-              this.updateTeamStatusBar();
-            } else {
-              this.updateStatusBarText();
-              this.updateStatusBarTooltip(
-                'Axiode: Calculating time spent today in background...',
-              );
-            }
+
+      if (!this.showStatusBar) return;
+
+      if (response.ok) {
+        const jsonData: any = await response.json();
+        const data = jsonData?.data;
+        if (data) this.hasTeamFeatures = data.has_team_features;
+        let output = data?.grand_total?.text;
+        if (
+          vscode.workspace.getConfiguration().get('axiode.status_bar_hide_categories') != 'true' &&
+          data?.categories?.length > 1
+        ) {
+          output = data.categories.map((x: any) => x.text + ' ' + x.name).join(', ');
+        }
+        if (output && output.trim()) {
+          if (this.showCodingActivity) {
+            this.updateStatusBarText(output.trim());
+            this.updateStatusBarTooltip("Axiode: Today's coding time. Click to visit dashboard.");
+          } else {
+            this.updateStatusBarText();
+            this.updateStatusBarTooltip(output.trim());
           }
-        } else if (code == 102 || code == 112) {
-          // noop, working offline
         } else {
-          this.logger.debug(
-            `Error fetching today coding activity (${code}); Check your ${this.options.getLogFile()} file for more details.`,
-          );
+          this.updateStatusBarText();
+          this.updateStatusBarTooltip('Axiode: Calculating time spent today in background...');
         }
-      });
+        this.updateTeamStatusBar();
+      } else if (response.status === 401 || response.status === 403) {
+        this.logger.debug(`Invalid API key (${response.status})`);
+        this.updateStatusBarText();
+        this.updateStatusBarTooltip('Axiode: Invalid API key. Run "Axiode API Key" to update.');
+      } else {
+        this.logger.debug(`Error fetching today coding activity (${response.status})`);
+        this.updateStatusBarText();
+        this.updateStatusBarTooltip('Axiode: Calculating time spent today in background...');
+      }
     } catch (e) {
       this.logger.debugException(e);
+      if (this.showStatusBar) {
+        this.updateStatusBarText();
+        this.updateStatusBarTooltip('Axiode: working offline...');
+      }
     }
   }
 
@@ -1251,14 +1143,12 @@ export class Axiode {
     const folder = this.getProjectFolder(doc.uri);
     if (folder) args.push('--project-folder', Utils.quote(folder));
 
-    if (Desktop.isWindows()) {
-      args.push(
-        '--config',
-        Utils.quote(this.options.getConfigFile(false)),
-        '--logfile',
-        Utils.quote(this.options.getLogFile()),
-      );
-    }
+    args.push(
+      '--config',
+      Utils.quote(this.options.getConfigFile(false)),
+      '--log-file',
+      Utils.quote(this.options.getLogFile()),
+    );
 
     if (doc.isUntitled) args.push('--is-unsaved-entity');
 

@@ -239,3 +239,56 @@ export class Utils {
     return Math.abs(relativeTo - compareTo) <= withinSeconds;
   }
 }
+
+/**
+ * Safe fetch wrapper — uses global fetch (available in VS Code 1.90+ / Node 20+)
+ * and falls back to Node's built-in https module for forks running older Node builds.
+ */
+export async function safeFetch(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string },
+): Promise<{ ok: boolean; status: number; json: () => Promise<any> }> {
+  if (typeof fetch === 'function') {
+    return fetch(url, options);
+  }
+
+  // Fallback: Node https module (for forks with Node < 18 / unstable fetch)
+  // This branch is only reachable in the desktop extension host, never in web.
+  return new Promise((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const https = require('https') as typeof import('https');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const http = require('http') as typeof import('http');
+    const parsed = new URL(url);
+    const lib = parsed.protocol === 'https:' ? https : http;
+    const bodyData = options.body ? Buffer.from(options.body, 'utf-8') : undefined;
+
+    const req = lib.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: options.method || 'GET',
+        headers: {
+          ...(options.headers || {}),
+          ...(bodyData ? { 'Content-Length': bodyData.length } : {}),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk: string) => (data += chunk));
+        res.on('end', () => {
+          resolve({
+            ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
+            status: res.statusCode ?? 0,
+            json: async () => JSON.parse(data),
+          });
+        });
+      },
+    );
+
+    req.on('error', reject);
+    if (bodyData) req.write(bodyData);
+    req.end();
+  });
+}

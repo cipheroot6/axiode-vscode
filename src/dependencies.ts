@@ -313,7 +313,7 @@ export class Dependencies {
           });
         } catch (e) {
           this.logger.warnException(e);
-          callback();
+          error();
         }
       });
     });
@@ -406,7 +406,7 @@ export class Dependencies {
   }
 
   private reportMissingPlatformSupport(osname: string, architecture: string): void {
-    const url = `https://api.wakatime.com/api/v1/cli-missing?osname=${osname}&architecture=${architecture}&plugin=vscode`;
+    const url = `https://axiode.vercel.app/api/v1/cli-missing?osname=${osname}&architecture=${architecture}&plugin=vscode`;
     this.options.getSetting('settings', 'proxy', false, (proxy: Setting) => {
       this.options.getSetting('settings', 'no_ssl_verify', false, (noSSLVerify: Setting) => {
         let options = { url: url };

@@ -204,53 +204,45 @@ export class Options {
   }
 
   public async getApiKey(): Promise<string> {
+    // Always read from editor settings live — never cache it
+    // so key rotations via Settings UI take effect immediately
+    const keyFromSettings = this.getApiKeyFromEditor();
+    if (!Utils.apiKeyInvalid(keyFromSettings)) {
+      this.cache.api_key = keyFromSettings;
+      return keyFromSettings;
+    }
+
+    // Only use cache for non-editor sources (env, vault, config file)
     if (!Utils.apiKeyInvalid(this.cache.api_key)) {
       return this.cache.api_key;
     }
 
     let from = '';
 
-    const keyFromSettings = this.getApiKeyFromEditor();
-    if (!Utils.apiKeyInvalid(keyFromSettings)) {
-      this.cache.api_key = keyFromSettings;
-      from = 'settings.json editor';
-    }
-
     const keyFromEnv = this.getApiKeyFromEnv();
     if (!Utils.apiKeyInvalid(keyFromEnv)) {
-      if (this.cache.api_key && this.cache.api_key !== keyFromEnv) {
-        vscode.window.showErrorMessage(
-          `Axiode API Key conflict. Your env key doesn't match your ${from} key.`,
-        );
-        return this.cache.api_key;
+      if (!this.cache.api_key) {
+        this.cache.api_key = keyFromEnv;
+        from = 'env var';
       }
-      this.cache.api_key = keyFromEnv;
-      from = 'env var';
     }
 
     try {
       const apiKeyFromVault = await this.getApiKeyFromVaultCmd();
       if (!Utils.apiKeyInvalid(apiKeyFromVault)) {
-        if (this.cache.api_key && this.cache.api_key !== apiKeyFromVault) {
-          vscode.window.showErrorMessage(
-            `Axiode API Key conflict. Your vault command key doesn't match your ${from} key.`,
-          );
-          return this.cache.api_key;
+        if (!this.cache.api_key) {
+          this.cache.api_key = apiKeyFromVault;
+          from = 'vault command';
         }
-        this.cache.api_key = apiKeyFromVault;
-        from = 'vault command';
       }
     } catch (err) {}
 
     try {
       const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
       if (!Utils.apiKeyInvalid(apiKey)) {
-        if (this.cache.api_key && this.cache.api_key !== apiKey) {
-          vscode.window.showErrorMessage(
-            `Axiode API Key conflict. Your ~/.axiode.cfg key doesn't match your ${from} key.`,
-          );
+        if (!this.cache.api_key) {
+          this.cache.api_key = apiKey;
         }
-        this.cache.api_key = apiKey;
       }
     } catch (err) {
       this.logger.debug(`Exception while reading API Key from config file: ${err}`);
