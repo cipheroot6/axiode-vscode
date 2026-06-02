@@ -3,11 +3,12 @@ import * as child_process from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as request from 'request';
+
 import * as semver from 'semver';
 import * as which from 'which';
 
 import { Options, Setting } from './options';
+import { safeFetch } from './utils';
 
 import { Desktop } from './desktop';
 import { Logger } from './logger';
@@ -159,44 +160,34 @@ export class Dependencies {
 
   private getLatestCliVersion(callback: (arg0: string) => void): void {
     this.options.getSetting('settings', 'proxy', false, (proxy: Setting) => {
-      this.options.getSetting('settings', 'no_ssl_verify', false, (noSSLVerify: Setting) => {
+      this.options.getSetting('settings', 'no_ssl_verify', false, async (noSSLVerify: Setting) => {
         let options = {
-          url: this.githubReleasesUrl,
-          json: true,
+          method: 'GET',
           headers: {
             'User-Agent': 'github.com/axiode/axiode-vscode',
           },
         };
-        this.logger.debug(`Fetching latest wakatime-cli version from GitHub API: ${options.url}`);
-        if (proxy.value) {
-          this.logger.debug(`Using Proxy: ${proxy.value}`);
-          options['proxy'] = proxy.value;
-        }
-        if (noSSLVerify.value === 'true') options['strictSSL'] = false;
+        this.logger.debug(`Fetching latest wakatime-cli version from GitHub API: ${this.githubReleasesUrl}`);
         try {
-          request.get(options, (error, response, json) => {
-            if (!error && response && response.statusCode == 200) {
-              this.logger.debug(`GitHub API Response ${response.statusCode}`);
-              const latestCliVersion = json['tag_name'];
-              this.logger.debug(`Latest wakatime-cli version from GitHub: ${latestCliVersion}`);
-              this.options.setSetting(
-                'internal',
-                'cli_version_last_accessed',
-                String(Math.round(Date.now() / 1000)),
-                true,
-              );
-              callback(latestCliVersion);
-            } else {
-              if (response) {
-                this.logger.warn(`GitHub API Response ${response.statusCode}: ${error}`);
-              } else {
-                this.logger.warn(`GitHub API Response Error: ${error}`);
-              }
-              callback('');
-            }
-          });
+          const response = await safeFetch(this.githubReleasesUrl, options);
+          if (response.ok) {
+            this.logger.debug(`GitHub API Response ${response.status}`);
+            const json = await response.json();
+            const latestCliVersion = json['tag_name'];
+            this.logger.debug(`Latest wakatime-cli version from GitHub: ${latestCliVersion}`);
+            this.options.setSetting(
+              'internal',
+              'cli_version_last_accessed',
+              String(Math.round(Date.now() / 1000)),
+              true,
+            );
+            callback(latestCliVersion);
+          } else {
+            this.logger.warn(`GitHub API Response ${response.status}`);
+            callback('');
+          }
         } catch (e) {
-          this.logger.warnException(e);
+          this.logger.warnException(e as Error);
           callback('');
         }
       });
@@ -215,6 +206,7 @@ export class Dependencies {
       },
       () => {
         this.logger.warn('Failed to download wakatime-cli. Will retry on next start.');
+        callback();
       },
     );
   }
@@ -290,29 +282,19 @@ export class Dependencies {
     error: () => void,
   ): void {
     this.options.getSetting('settings', 'proxy', false, (proxy: Setting) => {
-      this.options.getSetting('settings', 'no_ssl_verify', false, (noSSLVerify: Setting) => {
-        let options = { url: url };
-        if (proxy.value) {
-          this.logger.debug(`Using Proxy: ${proxy.value}`);
-          options['proxy'] = proxy.value;
-        }
-        if (noSSLVerify.value === 'true') options['strictSSL'] = false;
+      this.options.getSetting('settings', 'no_ssl_verify', false, async (noSSLVerify: Setting) => {
         try {
-          let r = request.get(options);
-          r.on('error', (e) => {
+          const response = await fetch(url);
+          if (!response.ok) {
             this.logger.warn(`Failed to download ${url}`);
-            this.logger.warn(e.toString());
             error();
-          });
-          let out = fs.createWriteStream(outputFile);
-          r.pipe(out);
-          r.on('end', () => {
-            out.on('finish', () => {
-              callback();
-            });
-          });
+            return;
+          }
+          const buffer = await response.arrayBuffer();
+          fs.writeFileSync(outputFile, Buffer.from(buffer));
+          callback();
         } catch (e) {
-          this.logger.warnException(e);
+          this.logger.warnException(e as Error);
           error();
         }
       });
@@ -408,12 +390,9 @@ export class Dependencies {
   private reportMissingPlatformSupport(osname: string, architecture: string): void {
     const url = `https://axiode.vercel.app/api/v1/cli-missing?osname=${osname}&architecture=${architecture}&plugin=vscode`;
     this.options.getSetting('settings', 'proxy', false, (proxy: Setting) => {
-      this.options.getSetting('settings', 'no_ssl_verify', false, (noSSLVerify: Setting) => {
-        let options = { url: url };
-        if (proxy.value) options['proxy'] = proxy.value;
-        if (noSSLVerify.value === 'true') options['strictSSL'] = false;
+      this.options.getSetting('settings', 'no_ssl_verify', false, async (noSSLVerify: Setting) => {
         try {
-          request.get(options);
+          await safeFetch(url, { method: 'GET' });
         } catch (e) {}
       });
     });

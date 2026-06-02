@@ -1,5 +1,11 @@
 export const COMMON_AI_EXTENSIONS: AIExtension[] = [
   {
+    // Claude Code VSCode extension (Anthropic)
+    // Also covers users running `claude` CLI in the integrated terminal
+    name: 'claude',
+    extensionIds: ['anthropic.claude-code'],
+  },
+  {
     name: 'codeium',
     extensionIds: ['codeium.codeium'],
   },
@@ -18,6 +24,12 @@ export const COMMON_AI_EXTENSIONS: AIExtension[] = [
   {
     name: 'openclaw',
     extensionIds: [],
+  },
+  {
+    // OpenCode VSCode extension (SST) — classic terminal-launcher
+    // sst-dev.opencode-v2 is the newer beta sidebar variant
+    name: 'opencode',
+    extensionIds: ['sst-dev.opencode', 'sst-dev.opencode-v2'],
   },
   {
     name: 'supermaven',
@@ -52,7 +64,7 @@ export enum LogLevel {
 
 export const DEFAULT_API_URL = 'https://axiode.vercel.app/api/v1';
 export const TIME_BETWEEN_HEARTBEATS_MS = 120000;
-export const SEND_BUFFER_SECONDS = 120;
+export const SEND_BUFFER_SECONDS = 30;
 export const AI_RECENT_PASTES_TIME_MS = 500;
 export const SYNC_AI_HEARTBEATS_DEBOUNCE_SECONDS = 120;
 
@@ -97,4 +109,4 @@ export interface AIExtension {
   extensionIds: string[];
 }
 
-export const ALLOWED_SCHEMES = ['file', 'vscode-chat-code-block', 'openai-codex', 'vscode-remote'];
+export const ALLOWED_SCHEMES = ['file', 'vscode-chat-code-block', 'openai-codex', 'opencode', 'vscode-remote'];

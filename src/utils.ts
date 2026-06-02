@@ -5,8 +5,10 @@ export class Utils {
   private static appNames = {
     'Arduino IDE': 'arduino',
     'Azure Data Studio': 'azdata',
+    'Claude Code': 'claude-code',
     Cursor: 'cursor',
     Kiro: 'kiro',
+    OpenCode: 'opencode',
     Onivim: 'onivim',
     'Onivim 2': 'onivim',
     Qoder: 'qoder',
@@ -21,8 +23,13 @@ export class Utils {
   }
 
   public static apiKeyInvalid(key?: string): string {
-    if (!key) return 'Invalid api key... key is empty';
-    if (key.trim().length < 8) return 'Invalid api key... key must be at least 8 characters';
+    const err = 'Invalid api key... check your dashboard for your key';
+    if (!key) return err;
+    const re = new RegExp(
+      '^(waka_|axiode_)?[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$',
+      'i',
+    );
+    if (!re.test(key)) return err;
     return '';
   }
 
@@ -144,18 +151,23 @@ export class Utils {
   }
 
   public static isAIChatSidebar(uri: vscode.Uri | undefined): boolean {
-    // first check if the active tab is the Claude Code sidebar
+    // check if the active tab is a known AI sidebar (Claude Code, OpenCode, etc.)
     const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
     const viewType = (activeTab?.input as { viewType?: string } | undefined)?.viewType;
-    if (viewType?.includes('claude') && activeTab?.label.toLowerCase().includes('claude')) {
+    const tabLabel = activeTab?.label.toLowerCase() ?? '';
+    if (viewType?.includes('claude') && tabLabel.includes('claude')) {
+      return true;
+    }
+    if (viewType?.includes('opencode') || tabLabel.includes('opencode')) {
       return true;
     }
 
-    // second, check if the active uri has an AI sidebar scheme
+    // check if the active uri has an AI sidebar scheme
     if (!uri) return false;
     if (uri.fsPath.endsWith('.log')) return false;
     if (uri.scheme === 'vscode-chat-code-block') return true;
     if (uri.scheme === 'openai-codex') return true;
+    if (uri.scheme === 'opencode') return true;
     return false;
   }
 

@@ -43,6 +43,7 @@ export class Axiode {
   private AIdebounceMs = 1000;
   private AIdebounceCount = 0;
   private AIrecentPastes: number[] = [];
+  private syncAIHeartbeatsDebounce: any = undefined;
   private dependencies: Dependencies;
   private options: Options;
   private logger: Logger;
@@ -67,8 +68,13 @@ export class Axiode {
   private lastSent: number = 0;
   private linesInFiles: LinesInFiles = {};
   private lineChanges: LineCounts = { ai: {}, human: {} };
-  private syncAIHeartbeatsDebounce?: NodeJS.Timeout = undefined;
   private filesWithHumanTyping: HumanTypingMap = {};
+
+  // CLI process names that indicate an AI coding session in the integrated terminal.
+  // Matched case-insensitively against the shell-integration reported command line.
+  private static readonly AI_TERMINAL_PROCESSES = ['opencode', 'claude'];
+  // Terminals currently running an AI CLI tool
+  private activeAITerminals: Set<vscode.Terminal> = new Set();
 
   constructor(extensionPath: string, logger: Logger) {
     this.extensionPath = extensionPath;
@@ -109,15 +115,38 @@ export class Axiode {
   }
 
   public dispose() {
-    if (this.syncAIHeartbeatsDebounce) {
-      clearTimeout(this.syncAIHeartbeatsDebounce);
-      this.syncAIHeartbeatsDebounce = undefined;
-    }
     this.sendHeartbeats();
     this.statusBar?.dispose();
     this.statusBarTeamYou?.dispose();
     this.statusBarTeamOther?.dispose();
     this.disposable?.dispose();
+  }
+
+  private get queueFile(): string {
+    return path.join(this.resourcesLocation, 'pending-heartbeats.json');
+  }
+
+  private persistHeartbeatQueue(): void {
+    if (!this.heartbeats.length) return;
+    try {
+      fs.writeFileSync(this.queueFile, JSON.stringify(this.heartbeats));
+    } catch (_) {}
+  }
+
+  private loadPersistedHeartbeats(): void {
+    try {
+      if (!fs.existsSync(this.queueFile)) return;
+      const raw = fs.readFileSync(this.queueFile, 'utf-8');
+      const saved: Heartbeat[] = JSON.parse(raw);
+      // Only replay heartbeats from the last 24 hours — older ones are stale
+      const cutoff = Date.now() / 1000 - 86400;
+      const fresh = saved.filter((h) => h.time > cutoff);
+      if (fresh.length) {
+        this.heartbeats.unshift(...fresh);
+        this.logger.debug(`Replaying ${fresh.length} persisted heartbeat(s) from previous session`);
+      }
+      fs.unlinkSync(this.queueFile);
+    } catch (_) {}
   }
 
   private setResourcesLocation() {
@@ -147,14 +176,16 @@ export class Axiode {
     this.statusBar.command = COMMAND_DASHBOARD;
 
     this.statusBarTeamYou = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Left,
-      0,
+      'com.axiode.teamyou',
+      align,
+      priority + 1,
     );
     this.statusBarTeamYou.name = 'Axiode Top dev';
 
     this.statusBarTeamOther = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Left,
-      0,
+      'com.axiode.teamother',
+      align,
+      priority,
     );
     this.statusBarTeamOther.name = 'Axiode Team Total';
 
@@ -166,17 +197,22 @@ export class Axiode {
         false,
         (statusBarEnabled: Setting) => {
           this.showStatusBar = statusBarEnabled.value !== 'false';
-          this.showCodingActivity =
-            vscode.workspace.getConfiguration().get('axiode.status_bar_coding_activity') !== 'false';
-          this.setStatusBarVisibility(this.showStatusBar);
-          this.updateStatusBarText('Axiode Initializing...');
-          this.updateStatusBarTooltip('Axiode: Initializing...');
-          this.dependencies.checkAndInstallCli(() => {
-            this.logger.debug('Axiode initialized');
-            this.updateStatusBarTooltip('Axiode: Initialized');
+          this.options.getSetting('settings', 'status_bar_coding_activity', false, (codingActivity: Setting) => {
+            this.showCodingActivity = codingActivity.value !== 'false';
+            this.setStatusBarVisibility(this.showStatusBar);
+            this.updateStatusBarText('Axiode Initializing...');
+            this.updateStatusBarTooltip('Axiode: Initializing...');
+
             this.checkApiKey();
             this.setupEventListeners();
-            this.getCodingActivity();
+
+            this.dependencies.checkAndInstallCli(() => {
+              this.logger.debug('Axiode initialized');
+              this.updateStatusBarText();
+              this.updateStatusBarTooltip('Axiode: Initialized');
+              this.loadPersistedHeartbeats();
+              this.getCodingActivity();
+            });
           });
         },
       );
@@ -229,6 +265,71 @@ export class Axiode {
   private updateStatusBarTooltipForOther(tooltipText: string): void {
     if (!this.statusBarTeamOther) return;
     this.statusBarTeamOther.tooltip = tooltipText;
+  }
+
+  private syncAIHeartbeatsDebounced(): void {
+    if (this.disabled) return;
+    if (this.syncAIHeartbeatsDebounce) clearTimeout(this.syncAIHeartbeatsDebounce);
+
+    this.syncAIHeartbeatsDebounce = setTimeout(() => {
+      this.syncAIHeartbeatsDebounce = undefined;
+      this.syncAIHeartbeats();
+    }, SYNC_AI_HEARTBEATS_DEBOUNCE_SECONDS * 1000);
+  }
+
+  private async syncAIHeartbeats(): Promise<void> {
+    if (!this.dependencies.isCliInstalled()) return;
+
+    const user_agent =
+      this.editorName + '/' + vscode.version + ' vscode-axiode/' + this.extension.version;
+    const args = ['--sync-ai-activity', '--plugin', Utils.quote(user_agent)];
+
+    if (this.isMetricsEnabled) args.push('--metrics');
+
+    const doc = vscode.window.activeTextEditor?.document;
+    if (doc) {
+      const project = this.getProjectName(doc.uri);
+      if (project) {
+        args.push('--alternate-project');
+        args.push(project);
+      }
+      const folder = this.getProjectFolder(doc.uri);
+      if (folder) {
+        args.push('--project-folder');
+        args.push(folder);
+      }
+    }
+
+    const apiKey = await this.options.getApiKey();
+    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
+
+    const apiUrl = await this.options.getApiUrl();
+    if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
+
+    if (Desktop.isWindows() || Desktop.isPortable()) {
+      args.push(
+        '--config',
+        Utils.quote(this.options.getConfigFile(false)),
+        '--log-file',
+        Utils.quote(this.options.getLogFile()),
+      );
+    }
+
+    const binary = this.dependencies.getCliLocation();
+    this.logger.debug(`Syncing AI heartbeats: ${Utils.formatArguments(binary, args)}`);
+    const options = Desktop.buildOptions();
+
+    try {
+      child_process.execFile(binary, args, options, (error, stdout, stderr) => {
+        if (error != null) {
+          if (stderr && stderr.toString() != '') this.logger.debug(stderr.toString());
+          if (stdout && stdout.toString() != '') this.logger.debug(stdout.toString());
+          this.logger.debug(error.toString());
+        }
+      });
+    } catch (e) {
+      this.logger.debugException(e as Error);
+    }
   }
 
   public async promptForApiKey(hidden: boolean = true): Promise<void> {
@@ -480,6 +581,9 @@ export class Axiode {
     vscode.debug.onDidTerminateDebugSession(this.onDidTerminateDebugSession, this, subscriptions);
     vscode.lm.onDidChangeChatModels(this.onDidChangeChatModels, this, subscriptions);
 
+    // Single global listeners for AI CLI tools running in the integrated terminal
+    this.setupAITerminalListeners(subscriptions);
+
     // create a combined disposable for all event subscriptions
     this.disposable = vscode.Disposable.from(...subscriptions);
   }
@@ -495,7 +599,10 @@ export class Axiode {
     this.logger.debug('onDidStartDebugSession');
     this.syncAIHeartbeatsDebounced();
     this.isDebugging = true;
-    this.isAICodeGenerating = false;
+    // Only clear AI flag if no terminal is actively running an AI tool
+    if (this.activeAITerminals.size === 0) {
+      this.isAICodeGenerating = false;
+    }
     this.updateLineNumbers();
     this.onEvent(false);
   }
@@ -514,7 +621,10 @@ export class Axiode {
     if (e.execution.task.isBackground) return;
     if (e.execution.task.detail && e.execution.task.detail.indexOf('watch') !== -1) return;
     this.isCompiling = true;
-    this.isAICodeGenerating = false;
+    // Only clear AI flag if no terminal is actively running an AI tool
+    if (this.activeAITerminals.size === 0) {
+      this.isAICodeGenerating = false;
+    }
     this.updateLineNumbers();
     this.onEvent(false);
   }
@@ -587,7 +697,10 @@ export class Axiode {
     this.syncAIHeartbeatsDebounced();
     if (!ALLOWED_SCHEMES.includes(e?.document?.uri?.scheme ?? '')) return;
     this.logger.debug('onChangeTab');
-    this.isAICodeGenerating = false;
+    // Only clear AI flag if no terminal is actively running an AI tool
+    if (this.activeAITerminals.size === 0) {
+      this.isAICodeGenerating = false;
+    }
     this.updateLineNumbers();
     this.onEvent(false);
   }
@@ -606,6 +719,7 @@ export class Axiode {
 
   private async appendCodeReviewHeartbeat(): Promise<void> {
     if (this.disabled) return;
+    if (!this.dependencies.isCliInstalled()) return;
 
     const time = Date.now();
     if (this.lastCodeReviewing && !Utils.enoughTimePassed(this.lastHeartbeat, time)) return;
@@ -657,13 +771,12 @@ export class Axiode {
 
   private onSave(e: vscode.TextDocument | undefined): void {
     this.logger.debug('onSave');
+    this.syncAIHeartbeatsDebounced();
 
     const file = Utils.getFocusedFile(e);
     if (file) {
       this.filesWithHumanTyping[file] = true;
     }
-
-    this.syncAIHeartbeatsDebounced();
     this.isAICodeGenerating = false;
     this.updateLineNumbers();
     this.onEvent(true);
@@ -704,14 +817,73 @@ export class Axiode {
     this.syncAIHeartbeatsDebounced();
   }
 
-  private onDidChangeActiveTerminal(_e: vscode.Terminal | undefined): void {
+  private onDidChangeActiveTerminal(terminal: vscode.Terminal | undefined): void {
     this.logger.debug('onDidChangeActiveTerminal');
     this.syncAIHeartbeatsDebounced();
+    if (!terminal) return;
+    if (this.activeAITerminals.has(terminal)) {
+      // Switched to a terminal running an AI tool
+      this.isAICodeGenerating = true;
+      this.onEvent(false);
+    } else if (this.isAICodeGenerating && this.activeAITerminals.size > 0) {
+      // Switched away from an AI terminal to a normal one — clear the flag
+      this.isAICodeGenerating = false;
+      this.onEvent(false);
+    }
   }
 
-  private onDidOpenTerminal(_e: vscode.Terminal): void {
+  private onDidOpenTerminal(terminal: vscode.Terminal): void {
     this.logger.debug('onDidOpenTerminal');
     this.syncAIHeartbeatsDebounced();
+    // No per-terminal listener needed — shell execution events are handled
+    // by the single global listeners registered in setupEventListeners.
+    // This handler is kept for future per-terminal setup if needed.
+  }
+
+  private watchTerminalForAIProcess(terminal: vscode.Terminal): void {
+    // No-op: kept for the already-open-terminals loop in initializeDependencies.
+    // Detection is now handled by the global onDidStartTerminalShellExecution
+    // listener registered once in setupEventListeners.
+    void terminal;
+  }
+
+  private setupAITerminalListeners(subscriptions: vscode.Disposable[]): void {
+    // Register a single global pair of shell-execution listeners (VS Code 1.93+).
+    // One global listener is far cleaner than one per terminal.
+    const windowExt = vscode.window as any;
+
+    if (typeof windowExt.onDidStartTerminalShellExecution === 'function') {
+      subscriptions.push(
+        windowExt.onDidStartTerminalShellExecution(
+          (e: { terminal: vscode.Terminal; execution: { commandLine: { value: string } } }) => {
+            const cmd = (e.execution?.commandLine?.value ?? '').trim().toLowerCase();
+            const isAI = Axiode.AI_TERMINAL_PROCESSES.some(
+              (p) => cmd === p || cmd.startsWith(p + ' ') || cmd.startsWith(p + '/'),
+            );
+            if (isAI) {
+              this.logger.debug(`AI terminal process started: ${cmd}`);
+              this.activeAITerminals.add(e.terminal);
+              this.isAICodeGenerating = true;
+              this.onEvent(false);
+            }
+          },
+        ),
+      );
+    }
+
+    if (typeof windowExt.onDidEndTerminalShellExecution === 'function') {
+      subscriptions.push(
+        windowExt.onDidEndTerminalShellExecution((e: { terminal: vscode.Terminal }) => {
+          if (!this.activeAITerminals.has(e.terminal)) return;
+          this.logger.debug('AI terminal process ended');
+          this.activeAITerminals.delete(e.terminal);
+          if (this.activeAITerminals.size === 0) {
+            this.isAICodeGenerating = false;
+          }
+          this.onEvent(false);
+        }),
+      );
+    }
   }
 
   private onDidChangeChatModels(): void {
@@ -817,7 +989,6 @@ export class Axiode {
       lineno: selection.line + 1,
       cursorpos: selection.character + 1,
       lines_in_file: doc.lineCount,
-      language: doc.languageId,
       ai_line_changes: this.lineChanges.ai[file],
       human_line_changes: this.lineChanges.human[file],
     };
@@ -884,137 +1055,158 @@ export class Axiode {
     }
   }
 
-  private syncAIHeartbeatsDebounced(): void {
-    if (this.disabled) return;
-    if (this.syncAIHeartbeatsDebounce) clearTimeout(this.syncAIHeartbeatsDebounce);
-
-    this.syncAIHeartbeatsDebounce = setTimeout(() => {
-      this.syncAIHeartbeatsDebounce = undefined;
-      this.syncAIHeartbeats();
-    }, SYNC_AI_HEARTBEATS_DEBOUNCE_SECONDS * 1000);
-  }
-
-  private async syncAIHeartbeats(): Promise<void> {
-    // AI heartbeats are already sent via _sendHeartbeats with ai_line_changes field
-    // Nothing extra to sync — this is handled in the main heartbeat payload
-    this.logger.debug('AI heartbeats sync: handled via main heartbeat payload');
-  }
-
   private async _sendHeartbeats(): Promise<void> {
+    if (!this.dependencies.isCliInstalled()) return;
+
     const heartbeat = this.heartbeats.shift();
     if (!heartbeat) return;
 
     this.lastSent = Date.now();
 
-    const extraHeartbeats = this.getExtraHeartbeats();
-    const allHeartbeats = [heartbeat, ...extraHeartbeats];
+    const args: string[] = [];
 
-    const apiKey = await this.options.getApiKey();
-    if (!apiKey) {
-      await this.promptForApiKey();
-      return;
+    args.push('--entity', Utils.quote(heartbeat.entity));
+
+    if (heartbeat.entity_type) {
+      args.push('--entity-type', heartbeat.entity_type);
     }
 
-    const apiUrl = await this.options.getApiUrl(true);
+    args.push('--time', String(heartbeat.time));
 
-    const toPayload = (h: Heartbeat) => ({
-      entity: h.entity,
-      type: h.entity_type || 'file',
-      time: h.time,
-      is_write: h.is_write,
-      ...(h.lineno && { lineno: h.lineno }),
-      ...(h.cursorpos && { cursorpos: h.cursorpos }),
-      ...(h.lines_in_file && { lines_in_file: h.lines_in_file }),
-      ...(h.category && { category: h.category }),
-      ...(h.alternate_project && { project: h.alternate_project }),
-      ...(h.project_folder && { project_root_count: 1, branch: undefined }),
-      ...(h.language && { language: h.language }),
-      ...(h.ai_line_changes && { ai_line_changes: h.ai_line_changes }),
-      ...(h.human_line_changes && { human_line_changes: h.human_line_changes }),
-      ...(h.is_unsaved_entity && { is_unsaved_entity: true }),
-      ...(h.plugin
-        ? { plugin: h.plugin }
-        : {
-            plugin: Utils.buildUserAgentString(
-              this.editorName,
-              this.extension.version,
-              h.agent,
-            ),
-          }),
+    if (heartbeat.plugin) {
+      args.push('--plugin', Utils.quote(heartbeat.plugin));
+    } else {
+      args.push(
+        '--plugin',
+        Utils.quote(
+          Utils.buildUserAgentString(this.editorName, this.extension.version, heartbeat.agent),
+        ),
+      );
+    }
+
+    if (heartbeat.lineno) args.push('--lineno', String(heartbeat.lineno));
+    if (heartbeat.cursorpos) args.push('--cursorpos', String(heartbeat.cursorpos));
+    if (heartbeat.lines_in_file) args.push('--lines-in-file', String(heartbeat.lines_in_file));
+    if (heartbeat.category) {
+      args.push('--category', heartbeat.category);
+    }
+
+    if (heartbeat.ai_line_changes) {
+      args.push('--ai-line-changes', String(heartbeat.ai_line_changes));
+    }
+    if (heartbeat.human_line_changes) {
+      args.push('--human-line-changes', String(heartbeat.human_line_changes));
+    }
+
+    if (this.isMetricsEnabled) args.push('--metrics');
+
+    const apiKey = await this.options.getApiKey();
+    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
+
+    const apiUrl = await this.options.getApiUrl();
+    if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
+
+    if (heartbeat.alternate_project) {
+      args.push('--alternate-project', Utils.quote(heartbeat.alternate_project));
+    }
+
+    if (heartbeat.project_folder) {
+      args.push('--project-folder', Utils.quote(heartbeat.project_folder));
+    }
+
+    if (heartbeat.is_write) args.push('--write');
+
+    if (Desktop.isWindows() || Desktop.isPortable()) {
+      args.push(
+        '--config',
+        Utils.quote(this.options.getConfigFile(false)),
+        '--log-file',
+        Utils.quote(this.options.getLogFile()),
+      );
+    }
+
+    if (heartbeat.is_unsaved_entity) args.push('--is-unsaved-entity');
+
+    const cleanup: string[] = [];
+    if (heartbeat.local_file) {
+      args.push('--local-file');
+      args.push(Utils.quote(heartbeat.local_file));
+      cleanup.push(heartbeat.local_file);
+    }
+
+    const extraHeartbeats = this.getExtraHeartbeats();
+    if (extraHeartbeats.length > 0) args.push('--extra-heartbeats');
+
+    const binary = this.dependencies.getCliLocation();
+    this.logger.debug(`Sending heartbeat: ${Utils.formatArguments(binary, args)}`);
+    const options = Desktop.buildOptions(extraHeartbeats.length > 0);
+    const proc = child_process.execFile(binary, args, options, (error, stdout, stderr) => {
+      if (error != null) {
+        if (stderr && stderr.toString() != '') this.logger.error(stderr.toString());
+        if (stdout && stdout.toString() != '') this.logger.error(stdout.toString());
+        this.logger.error(error.toString());
+      }
     });
 
-    const payload = allHeartbeats.map(toPayload);
-    const cleanup = allHeartbeats
-      .map((h) => h.local_file)
-      .filter(Boolean) as string[];
+    // send any extra heartbeats
+    if (proc.stdin) {
+      proc.stdin.write(JSON.stringify(extraHeartbeats));
+      proc.stdin.write('\n');
+      proc.stdin.end();
+      cleanup.push(...(extraHeartbeats.map((h) => h.local_file).filter(Boolean) as string[]));
+    } else if (extraHeartbeats.length > 0) {
+      this.logger.error('Unable to set stdio[0] to pipe');
+      this.heartbeats.push(...extraHeartbeats);
+    }
 
-    try {
-      const response = await safeFetch(
-        allHeartbeats.length === 1
-          ? `${apiUrl}/users/current/heartbeats`
-          : `${apiUrl}/users/current/heartbeats.bulk`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'User-Agent': `${this.editorName}/${vscode.version} vscode-axiode/${this.extension.version}`,
-          },
-          body: JSON.stringify(allHeartbeats.length === 1 ? payload[0] : payload),
-        },
-      );
-
-      if (response.ok) {
-        this.logger.debug(`Heartbeat(s) sent successfully (${response.status})`);
-        if (this.showStatusBar) {
-          this.lastFetchToday = 0; // force immediate status bar refresh after successful heartbeat
-          this.getCodingActivity();
-        }
-      } else if (response.status === 401 || response.status === 403) {
-        const error_msg = 'Invalid Api Key (401); Make sure your Api Key is correct!';
-        if (this.showStatusBar) {
-          this.updateStatusBarText('Axiode Error');
-          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
-        }
-        this.logger.error(error_msg);
-        const now = Date.now();
-        if (this.lastApiKeyPrompted < now - 86400000) {
-          await this.promptForApiKey(false);
-          this.lastApiKeyPrompted = now;
-        }
-      } else if (response.status === 0 || response.status >= 500) {
+    proc.on('close', async (code, _signal) => {
+      if (code == 0) {
+        if (this.showStatusBar) this.getCodingActivity();
+      } else if (code == 102 || code == 112) {
         if (this.showStatusBar) {
           if (!this.showCodingActivity) this.updateStatusBarText();
           this.updateStatusBarTooltip(
             'Axiode: working offline... coding activity will sync next time we are online',
           );
         }
-        this.logger.warn(`Working offline (${response.status})`);
-        // re-queue heartbeats so they aren't lost
-        this.heartbeats.unshift(...allHeartbeats);
+        this.logger.warn(
+          `Working offline (${code}); Check your ${this.options.getLogFile()} file for more details`,
+        );
+      } else if (code == 103) {
+        const error_msg = `Config parsing error (103); Check your ${this.options.getLogFile()} file for more details`;
+        if (this.showStatusBar) {
+          this.updateStatusBarText('Axiode Error');
+          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
+        }
+        this.logger.error(error_msg);
+      } else if (code == 104) {
+        const error_msg = 'Invalid Api Key (104); Make sure your Api Key is correct!';
+        if (this.showStatusBar) {
+          this.updateStatusBarText('Axiode Error');
+          this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
+        }
+        this.logger.error(error_msg);
+        const now: number = Date.now();
+        if (this.lastApiKeyPrompted < now - 86400000) {
+          // only prompt once per day
+          await this.promptForApiKey(false);
+          this.lastApiKeyPrompted = now;
+        }
       } else {
-        const error_msg = `Error sending heartbeat (${response.status})`;
+        const error_msg = `Unknown Error (${code}); Check your ${this.options.getLogFile()} file for more details`;
         if (this.showStatusBar) {
           this.updateStatusBarText('Axiode Error');
           this.updateStatusBarTooltip(`Axiode: ${error_msg}`);
         }
         this.logger.error(error_msg);
       }
-    } catch (e) {
-      this.logger.debugException(e);
-      if (this.showStatusBar) {
-        if (!this.showCodingActivity) this.updateStatusBarText();
-        this.updateStatusBarTooltip(
-          'Axiode: working offline... coding activity will sync next time we are online',
-        );
-      }
-      // re-queue heartbeats so they aren't lost
-      this.heartbeats.unshift(...allHeartbeats);
-    } finally {
-      cleanup.forEach((tmpfile) => {
-        try { fs.unlinkSync(tmpfile); } catch (_) {}
+
+      cleanup.map((tmpfile) => {
+        try {
+          fs.unlinkSync(tmpfile);
+        } catch (_) {}
       });
-    }
+    });
   }
 
   private getExtraHeartbeats() {
@@ -1146,12 +1338,14 @@ export class Axiode {
     const folder = this.getProjectFolder(doc.uri);
     if (folder) args.push('--project-folder', Utils.quote(folder));
 
-    args.push(
-      '--config',
-      Utils.quote(this.options.getConfigFile(false)),
-      '--log-file',
-      Utils.quote(this.options.getLogFile()),
-    );
+    if (Desktop.isWindows() || Desktop.isPortable()) {
+      args.push(
+        '--config',
+        Utils.quote(this.options.getConfigFile(false)),
+        '--log-file',
+        Utils.quote(this.options.getLogFile()),
+      );
+    }
 
     if (doc.isUntitled) args.push('--is-unsaved-entity');
 

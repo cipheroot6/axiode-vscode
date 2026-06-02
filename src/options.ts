@@ -26,6 +26,27 @@ export class Options {
     this.configFile = path.join(Desktop.getHomeDirectory(), '.axiode.cfg');
     this.internalConfigFile = path.join(resourcesFolder, 'axiode-internal.cfg');
     this.logFile = path.join(resourcesFolder, 'axiode.log');
+
+    try {
+      if (fs.existsSync(this.configFile)) {
+        fs.watch(this.configFile, (event) => {
+          if (event === 'change') {
+            this.clearApiKeyCache();
+          }
+        });
+      } else {
+        const parentDir = path.dirname(this.configFile);
+        if (fs.existsSync(parentDir)) {
+          fs.watch(parentDir, (event, filename) => {
+            if (filename === '.axiode.cfg') {
+              this.clearApiKeyCache();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      this.logger.debugException(e as Error);
+    }
   }
 
   public async getSettingAsync<T = any>(section: string, key: string): Promise<T> {
@@ -204,45 +225,49 @@ export class Options {
   }
 
   public async getApiKey(): Promise<string> {
-    // Always read from editor settings live — never cache it
-    // so key rotations via Settings UI take effect immediately
+    let from = '';
+
     const keyFromSettings = this.getApiKeyFromEditor();
     if (!Utils.apiKeyInvalid(keyFromSettings)) {
       this.cache.api_key = keyFromSettings;
-      return keyFromSettings;
+      from = 'settings.json editor';
     }
-
-    // Only use cache for non-editor sources (env, vault, config file)
-    if (!Utils.apiKeyInvalid(this.cache.api_key)) {
-      return this.cache.api_key;
-    }
-
-    let from = '';
 
     const keyFromEnv = this.getApiKeyFromEnv();
     if (!Utils.apiKeyInvalid(keyFromEnv)) {
-      if (!this.cache.api_key) {
-        this.cache.api_key = keyFromEnv;
-        from = 'env var';
+      if (this.cache.api_key && this.cache.api_key !== keyFromEnv) {
+        vscode.window.showErrorMessage(
+          `Axiode API Key conflict. Your env key doesn't match your ${from} key.`,
+        );
+        return this.cache.api_key;
       }
+      this.cache.api_key = keyFromEnv;
+      from = 'env var';
     }
 
     try {
       const apiKeyFromVault = await this.getApiKeyFromVaultCmd();
       if (!Utils.apiKeyInvalid(apiKeyFromVault)) {
-        if (!this.cache.api_key) {
-          this.cache.api_key = apiKeyFromVault;
-          from = 'vault command';
+        if (this.cache.api_key && this.cache.api_key !== apiKeyFromVault) {
+          vscode.window.showErrorMessage(
+            `Axiode API Key conflict. Your vault command key doesn't match your ${from} key.`,
+          );
+          return this.cache.api_key;
         }
+        this.cache.api_key = apiKeyFromVault;
+        from = 'vault command';
       }
     } catch (err) {}
 
     try {
       const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
       if (!Utils.apiKeyInvalid(apiKey)) {
-        if (!this.cache.api_key) {
-          this.cache.api_key = apiKey;
+        if (this.cache.api_key && this.cache.api_key !== apiKey) {
+          vscode.window.showErrorMessage(
+            `Axiode API Key conflict. Your ~/.axiode.cfg key doesn't match your ${from} key.`,
+          );
         }
+        this.cache.api_key = apiKey;
       }
     } catch (err) {
       this.logger.debug(`Exception while reading API Key from config file: ${err}`);
@@ -323,7 +348,16 @@ export class Options {
   public getApiKeyFromEnv(): string {
     if (this.cache.api_key_from_env !== undefined) return this.cache.api_key_from_env;
 
-    this.cache.api_key_from_env = process.env.AXIODE_API_KEY || process.env.WAKATIME_API_KEY || '';
+    const axiodeKey = process.env.AXIODE_API_KEY || '';
+    const wakatimeKey = process.env.WAKATIME_API_KEY || '';
+
+    if (axiodeKey && wakatimeKey && axiodeKey !== wakatimeKey) {
+      vscode.window.showErrorMessage(
+        `Axiode API Key conflict. Both AXIODE_API_KEY and WAKATIME_API_KEY environment variables are set but have different values. Using AXIODE_API_KEY.`,
+      );
+    }
+
+    this.cache.api_key_from_env = axiodeKey || wakatimeKey || '';
 
     return this.cache.api_key_from_env;
   }
