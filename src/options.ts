@@ -397,7 +397,7 @@ export class Options {
     return this.cache.api_key_from_env;
   }
 
-  public async getApiUrl(checkSettingsFile = false): Promise<string> {
+  public async getApiUrl(checkSettingsFile = true): Promise<string> {
     let apiUrl = this.getApiUrlFromEditor();
 
     if (!apiUrl) {

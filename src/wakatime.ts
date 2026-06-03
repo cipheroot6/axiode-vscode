@@ -306,14 +306,12 @@ export class Axiode {
     const apiUrl = await this.options.getApiUrl();
     if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
 
-    if (Desktop.isWindows() || Desktop.isPortable()) {
-      args.push(
-        '--config',
-        Utils.quote(this.options.getConfigFile(false)),
-        '--log-file',
-        Utils.quote(this.options.getLogFile()),
-      );
-    }
+    args.push(
+      '--config',
+      Utils.quote(this.options.getConfigFile(false)),
+      '--log-file',
+      Utils.quote(this.options.getLogFile()),
+    );
 
     const binary = this.dependencies.getCliLocation();
     this.logger.debug(`Syncing AI heartbeats: ${Utils.formatArguments(binary, args)}`);
@@ -1127,14 +1125,12 @@ export class Axiode {
 
     if (heartbeat.is_write) args.push('--write');
 
-    if (Desktop.isWindows() || Desktop.isPortable()) {
-      args.push(
-        '--config',
-        Utils.quote(this.options.getConfigFile(false)),
-        '--log-file',
-        Utils.quote(this.options.getLogFile()),
-      );
-    }
+    args.push(
+      '--config',
+      Utils.quote(this.options.getConfigFile(false)),
+      '--log-file',
+      Utils.quote(this.options.getLogFile()),
+    );
 
     if (heartbeat.is_unsaved_entity) args.push('--is-unsaved-entity');
 
@@ -1349,14 +1345,12 @@ export class Axiode {
     const folder = this.getProjectFolder(doc.uri);
     if (folder) args.push('--project-folder', Utils.quote(folder));
 
-    if (Desktop.isWindows() || Desktop.isPortable()) {
-      args.push(
-        '--config',
-        Utils.quote(this.options.getConfigFile(false)),
-        '--log-file',
-        Utils.quote(this.options.getLogFile()),
-      );
-    }
+    args.push(
+      '--config',
+      Utils.quote(this.options.getConfigFile(false)),
+      '--log-file',
+      Utils.quote(this.options.getLogFile()),
+    );
 
     if (doc.isUntitled) args.push('--is-unsaved-entity');
 

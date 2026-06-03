@@ -18,8 +18,16 @@ export const COMMON_AI_EXTENSIONS: AIExtension[] = [
     extensionIds: ['continue.continue'],
   },
   {
+    name: 'copilot',
+    extensionIds: ['github.copilot', 'github.copilot-chat'],
+  },
+  {
     name: 'factory',
     extensionIds: [],
+  },
+  {
+    name: 'gemini',
+    extensionIds: ['google.gemini-code-assist'],
   },
   {
     name: 'openclaw',
