@@ -36,7 +36,7 @@ export class Axiode {
   private AIrecentPastes: number[] = [];
   private logger: Logger;
   private config: Memento;
-  private fetchTodayInterval: number = 60000;
+  private fetchTodayInterval: number = 300000;
   private lastFetchToday: number = 0;
   private showStatusBar: boolean;
   private showStatusBarTeam: boolean;
@@ -192,7 +192,7 @@ export class Axiode {
     if (Utils.apiKeyInvalid(defaultVal)) defaultVal = '';
     const promptOptions = {
       prompt: 'Axiode Api Key',
-      placeHolder: 'Enter your api key from https://axiode.com/api-key',
+      placeHolder: 'Enter your api key from https://axiode.vercel.app/settings',
       value: defaultVal,
       ignoreFocusOut: true,
       password: hidden,

@@ -47,7 +47,7 @@ export class Axiode {
   private dependencies: Dependencies;
   private options: Options;
   private logger: Logger;
-  private fetchTodayInterval: number = 60000;
+  private fetchTodayInterval: number = 300000;
   private lastFetchToday: number = 0;
   private showStatusBar: boolean;
   private showCodingActivity: boolean;
@@ -536,9 +536,20 @@ export class Axiode {
     const subscriptions: vscode.Disposable[] = [];
 
     // When user changes axiode.apiKey in Settings UI, pick it up immediately
-    vscode.workspace.onDidChangeConfiguration((e) => {
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration('axiode.apiKey')) {
         this.options.clearApiKeyCache();
+        const apiKey = this.options.getApiKeyFromEditor();
+        if (!Utils.apiKeyInvalid(apiKey)) {
+          try {
+            const configKey = await this.options.getSettingAsync<string>('settings', 'api_key');
+            if (configKey !== apiKey) {
+              this.options.setSetting('settings', 'api_key', apiKey, false);
+            }
+          } catch (err) {
+            this.options.setSetting('settings', 'api_key', apiKey, false);
+          }
+        }
         this.lastFetchToday = 0; // force immediate status bar refresh
         this.getCodingActivity();
       }
@@ -1224,10 +1235,10 @@ export class Axiode {
     const cutoff = Date.now() - this.fetchTodayInterval;
     if (this.lastFetchToday > cutoff) return;
 
+    this.lastFetchToday = Date.now();
+
     const apiKey = await this.options.getApiKey();
     if (!apiKey) return;
-
-    this.lastFetchToday = Date.now();
 
     await this._getCodingActivity();
   }

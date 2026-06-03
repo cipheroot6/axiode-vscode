@@ -29,17 +29,43 @@ export class Options {
 
     try {
       if (fs.existsSync(this.configFile)) {
-        fs.watch(this.configFile, (event) => {
+        fs.watch(this.configFile, async (event) => {
           if (event === 'change') {
             this.clearApiKeyCache();
+            try {
+              const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+              if (!Utils.apiKeyInvalid(apiKey)) {
+                const editorKey = this.getApiKeyFromEditor();
+                if (editorKey !== apiKey) {
+                  await vscode.workspace
+                    .getConfiguration()
+                    .update('axiode.apiKey', apiKey, vscode.ConfigurationTarget.Global);
+                }
+              }
+            } catch (err) {
+              this.logger.debug(`Error syncing config file key to editor: ${err}`);
+            }
           }
         });
       } else {
         const parentDir = path.dirname(this.configFile);
         if (fs.existsSync(parentDir)) {
-          fs.watch(parentDir, (event, filename) => {
+          fs.watch(parentDir, async (event, filename) => {
             if (filename === '.axiode.cfg') {
               this.clearApiKeyCache();
+              try {
+                const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+                if (!Utils.apiKeyInvalid(apiKey)) {
+                  const editorKey = this.getApiKeyFromEditor();
+                  if (editorKey !== apiKey) {
+                    await vscode.workspace
+                      .getConfiguration()
+                      .update('axiode.apiKey', apiKey, vscode.ConfigurationTarget.Global);
+                  }
+                }
+              } catch (err) {
+                this.logger.debug(`Error syncing config file key to editor: ${err}`);
+              }
             }
           });
         }
@@ -263,11 +289,20 @@ export class Options {
       const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
       if (!Utils.apiKeyInvalid(apiKey)) {
         if (this.cache.api_key && this.cache.api_key !== apiKey) {
-          vscode.window.showErrorMessage(
-            `Axiode API Key conflict. Your ~/.axiode.cfg key doesn't match your ${from} key.`,
-          );
+          if (from === 'settings.json editor') {
+            this.setSetting('settings', 'api_key', this.cache.api_key, false);
+          } else {
+            vscode.window.showErrorMessage(
+              `Axiode API Key conflict. Your ~/.axiode.cfg key doesn't match your ${from} key.`,
+            );
+          }
+        } else if (!this.cache.api_key) {
+          this.cache.api_key = apiKey;
         }
-        this.cache.api_key = apiKey;
+      } else {
+        if (this.cache.api_key && from === 'settings.json editor') {
+          this.setSetting('settings', 'api_key', this.cache.api_key, false);
+        }
       }
     } catch (err) {
       this.logger.debug(`Exception while reading API Key from config file: ${err}`);

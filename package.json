@@ -2,7 +2,7 @@
   "name": "axiode-vscode",
   "displayName": "Axiode",
   "description": "Real-time developer activity tracking for Axiode — sessions, projects, and productivity insights.",
-  "version": "1.0.23",
+  "version": "1.0.26",
   "publisher": "axiode",
   "author": {
     "name": "Axiode"
