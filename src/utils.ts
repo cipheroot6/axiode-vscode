@@ -7,13 +7,17 @@ export class Utils {
     'Azure Data Studio': 'azdata',
     'Claude Code': 'claude-code',
     Cursor: 'cursor',
+    IDX: 'idx',
     Kiro: 'kiro',
+    Melty: 'melty',
     OpenCode: 'opencode',
     Onivim: 'onivim',
     'Onivim 2': 'onivim',
+    PearAI: 'pearai',
     Qoder: 'qoder',
     'SQL Operations Studio': 'sqlops',
     Trae: 'trae',
+    Void: 'void',
     Windsurf: 'windsurf',
   };
 
@@ -23,10 +27,10 @@ export class Utils {
   }
 
   public static apiKeyInvalid(key?: string): string {
-    const err = 'Invalid api key... check your dashboard for your key';
+    const err = 'Invalid api key... check https://axiode.vercel.app/settings for your key';
     if (!key) return err;
     const re = new RegExp(
-      '^(waka_|axiode_)?([0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}|[0-9A-F]{64})$',
+      '^axiode_([0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}|[0-9A-F]{64})$',
       'i',
     );
     if (!re.test(key)) return err;
@@ -151,23 +155,41 @@ export class Utils {
   }
 
   public static isAIChatSidebar(uri: vscode.Uri | undefined): boolean {
-    // check if the active tab is a known AI sidebar (Claude Code, OpenCode, etc.)
+    // check if the active tab is a known AI sidebar/webview (Copilot, Claude, Codeium, etc.)
     const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
-    const viewType = (activeTab?.input as { viewType?: string } | undefined)?.viewType;
-    const tabLabel = activeTab?.label.toLowerCase() ?? '';
-    if (viewType?.includes('claude') && tabLabel.includes('claude')) {
-      return true;
-    }
-    if (viewType?.includes('opencode') || tabLabel.includes('opencode')) {
+    const viewType = (activeTab?.input as { viewType?: string } | undefined)?.viewType?.toLowerCase() ?? '';
+    
+    const aiIdentifiers = [
+      'antigravity',
+      'claude',
+      'codeium',
+      'cody',
+      'continue',
+      'copilot',
+      'cursor',
+      'gemini',
+      'opencode',
+      'supermaven',
+      'tabnine',
+      'windsurf',
+      'chatgpt'
+    ];
+
+    if (viewType && aiIdentifiers.some(id => viewType.includes(id))) {
       return true;
     }
 
     // check if the active uri has an AI sidebar scheme
     if (!uri) return false;
     if (uri.fsPath.endsWith('.log')) return false;
-    if (uri.scheme === 'vscode-chat-code-block') return true;
-    if (uri.scheme === 'openai-codex') return true;
-    if (uri.scheme === 'opencode') return true;
+    
+    const scheme = uri.scheme.toLowerCase();
+    if (scheme === 'vscode-chat-code-block') return true;
+    if (scheme === 'openai-codex') return true;
+    if (aiIdentifiers.some(id => scheme === id)) {
+      return true;
+    }
+
     return false;
   }
 
@@ -258,10 +280,10 @@ export class Utils {
  */
 export async function safeFetch(
   url: string,
-  options: { method?: string; headers?: Record<string, string>; body?: string },
-): Promise<{ ok: boolean; status: number; json: () => Promise<any> }> {
+  options: { method?: string; headers?: Record<string, string>; body?: string; proxy?: string; noSSLVerify?: boolean } = {},
+): Promise<{ ok: boolean; status: number; json: () => Promise<any>; arrayBuffer: () => Promise<ArrayBuffer> }> {
   if (typeof fetch === 'function') {
-    return fetch(url, options);
+    return fetch(url, options as RequestInit) as any;
   }
 
   // Fallback: Node https module (for forks with Node < 18 / unstable fetch)
@@ -285,15 +307,18 @@ export async function safeFetch(
           ...(options.headers || {}),
           ...(bodyData ? { 'Content-Length': bodyData.length } : {}),
         },
+        rejectUnauthorized: !options.noSSLVerify,
       },
       (res) => {
-        let data = '';
-        res.on('data', (chunk: string) => (data += chunk));
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
         res.on('end', () => {
+          const buffer = Buffer.concat(chunks);
           resolve({
             ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
             status: res.statusCode ?? 0,
-            json: async () => JSON.parse(data),
+            json: async () => JSON.parse(buffer.toString('utf-8')),
+            arrayBuffer: async () => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
           });
         });
       },

@@ -43,11 +43,11 @@ export class Axiode {
   private AIdebounceMs = 1000;
   private AIdebounceCount = 0;
   private AIrecentPastes: number[] = [];
-  private syncAIHeartbeatsDebounce: any = undefined;
+  private syncAIHeartbeatsDebounce?: NodeJS.Timeout = undefined;
   private dependencies: Dependencies;
   private options: Options;
   private logger: Logger;
-  private fetchTodayInterval: number = 300000;
+  private fetchTodayInterval: number = 60000;
   private lastFetchToday: number = 0;
   private showStatusBar: boolean;
   private showCodingActivity: boolean;
@@ -60,7 +60,7 @@ export class Axiode {
   private isAICodeGenerating: boolean = false;
   private hasAICapabilities: boolean = false;
   private currentlyFocusedFile: string;
-  private teamDevsForFileCache = {};
+  private teamDevsForFileCache: Record<string, { data: any; cachedAt: number }> = {};
   private resourcesLocation: string;
   private lastApiKeyPrompted: number = 0;
   private isMetricsEnabled: boolean = false;
@@ -72,7 +72,7 @@ export class Axiode {
 
   // CLI process names that indicate an AI coding session in the integrated terminal.
   // Matched case-insensitively against the shell-integration reported command line.
-  private static readonly AI_TERMINAL_PROCESSES = ['opencode', 'claude'];
+  private static readonly AI_TERMINAL_PROCESSES = ['opencode', 'claude', 'antigravity'];
   // Terminals currently running an AI CLI tool
   private activeAITerminals: Set<vscode.Terminal> = new Set();
 
@@ -99,7 +99,7 @@ export class Axiode {
         this.extension = (extension != undefined && extension.packageJSON) || { version: '0.0.0' };
         this.editorName = Utils.getEditorName();
 
-        this.hasAICapabilities = Utils.hasAIExtensions();
+        this.hasAICapabilities = Utils.hasAIExtensions() || ['cursor', 'windsurf', 'trae', 'pearai', 'void', 'melty', 'idx'].includes(this.editorName);
 
         this.options.getSetting('settings', 'disabled', false, (disabled: Setting) => {
           this.disabled = disabled.value === 'true';
@@ -114,12 +114,18 @@ export class Axiode {
     });
   }
 
-  public dispose() {
-    this.sendHeartbeats();
+  public async dispose() {
+    if (this.syncAIHeartbeatsDebounce) {
+      clearTimeout(this.syncAIHeartbeatsDebounce);
+      this.syncAIHeartbeatsDebounce = undefined;
+    }
+    this.persistHeartbeatQueue();
+    await this.sendHeartbeats();
     this.statusBar?.dispose();
     this.statusBarTeamYou?.dispose();
     this.statusBarTeamOther?.dispose();
     this.disposable?.dispose();
+    this.options.dispose();
   }
 
   private get queueFile(): string {
@@ -197,14 +203,15 @@ export class Axiode {
         false,
         (statusBarEnabled: Setting) => {
           this.showStatusBar = statusBarEnabled.value !== 'false';
+          this.setStatusBarVisibility(this.showStatusBar);
+          this.updateStatusBarText('Axiode Initializing...');
+          this.updateStatusBarTooltip('Axiode: Initializing...');
+
+          this.checkApiKey();
+          this.setupEventListeners();
+
           this.options.getSetting('settings', 'status_bar_coding_activity', false, (codingActivity: Setting) => {
             this.showCodingActivity = codingActivity.value !== 'false';
-            this.setStatusBarVisibility(this.showStatusBar);
-            this.updateStatusBarText('Axiode Initializing...');
-            this.updateStatusBarTooltip('Axiode: Initializing...');
-
-            this.checkApiKey();
-            this.setupEventListeners();
 
             this.dependencies.checkAndInstallCli(() => {
               this.logger.debug('Axiode initialized');
@@ -301,7 +308,12 @@ export class Axiode {
     }
 
     const apiKey = await this.options.getApiKey();
-    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
+    if (!Utils.apiKeyInvalid(apiKey)) {
+      const cliKey = apiKey.startsWith('axiode_')
+        ? 'waka_' + apiKey.substring('axiode_'.length)
+        : apiKey;
+      args.push('--key', Utils.quote(cliKey));
+    }
 
     const apiUrl = await this.options.getApiUrl();
     if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
@@ -341,16 +353,20 @@ export class Axiode {
       password: hidden,
       validateInput: Utils.apiKeyInvalid.bind(this),
     };
-    vscode.window.showInputBox(promptOptions).then((val) => {
+    vscode.window.showInputBox(promptOptions).then(async (val) => {
       if (val != undefined) {
-        const invalid = Utils.apiKeyInvalid(val);
+        let finalVal = val.trim();
+        const invalid = Utils.apiKeyInvalid(finalVal);
         if (!invalid) {
           // Save to both VS Code settings (primary) and config file (fallback)
-          vscode.workspace.getConfiguration().update('axiode.apiKey', val, vscode.ConfigurationTarget.Global);
-          this.options.setSetting('settings', 'api_key', val, false);
+          vscode.workspace.getConfiguration().update('axiode.apiKey', finalVal, vscode.ConfigurationTarget.Global);
+          this.options.setSetting('settings', 'api_key', finalVal, false);
           this.options.clearApiKeyCache();
           this.lastFetchToday = 0;
           this.getCodingActivity();
+          if (this.heartbeats.length > 0) {
+            await this._sendHeartbeats();
+          }
         } else vscode.window.setStatusBarMessage(invalid);
       } else vscode.window.setStatusBarMessage('Axiode api key not provided');
     });
@@ -540,7 +556,10 @@ export class Axiode {
         const apiKey = this.options.getApiKeyFromEditor();
         if (!Utils.apiKeyInvalid(apiKey)) {
           try {
-            const configKey = await this.options.getSettingAsync<string>('settings', 'api_key');
+            let configKey = await this.options.getSettingAsync<string>('settings', 'api_key');
+            if (configKey && configKey.startsWith('waka_')) {
+              configKey = 'axiode_' + configKey.substring('waka_'.length);
+            }
             if (configKey !== apiKey) {
               this.options.setSetting('settings', 'api_key', apiKey, false);
             }
@@ -1006,7 +1025,8 @@ export class Axiode {
     if (!this.filesWithHumanTyping[file]) heartbeat.human_line_changes = 0;
     this.filesWithHumanTyping[file] = false;
 
-    this.lineChanges = { ai: {}, human: {} };
+    if (this.lineChanges.ai[file]) delete this.lineChanges.ai[file];
+    if (this.lineChanges.human[file]) delete this.lineChanges.human[file];
 
     if (isDebugging) {
       heartbeat.category = 'debugging';
@@ -1110,7 +1130,12 @@ export class Axiode {
     if (this.isMetricsEnabled) args.push('--metrics');
 
     const apiKey = await this.options.getApiKey();
-    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
+    if (!Utils.apiKeyInvalid(apiKey)) {
+      const cliKey = apiKey.startsWith('axiode_')
+        ? 'waka_' + apiKey.substring('axiode_'.length)
+        : apiKey;
+      args.push('--key', Utils.quote(cliKey));
+    }
 
     const apiUrl = await this.options.getApiUrl();
     if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
@@ -1163,13 +1188,15 @@ export class Axiode {
       cleanup.push(...(extraHeartbeats.map((h) => h.local_file).filter(Boolean) as string[]));
     } else if (extraHeartbeats.length > 0) {
       this.logger.error('Unable to set stdio[0] to pipe');
-      this.heartbeats.push(...extraHeartbeats);
+      this.heartbeats.unshift(...extraHeartbeats);
     }
 
     proc.on('close', async (code, _signal) => {
       if (code == 0) {
+        this.lastSent = Date.now();
         if (this.showStatusBar) this.getCodingActivity();
       } else if (code == 102 || code == 112) {
+        this.lastSent = Date.now();
         if (this.showStatusBar) {
           if (!this.showCodingActivity) this.updateStatusBarText();
           this.updateStatusBarTooltip(
@@ -1317,9 +1344,9 @@ export class Axiode {
 
     this.currentlyFocusedFile = file;
 
-    // TODO: expire cached text after some hours
-    if (this.teamDevsForFileCache[file]) {
-      this.updateTeamStatusBarFromJson(this.teamDevsForFileCache[file]);
+    const cached = this.teamDevsForFileCache[file];
+    if (cached && Date.now() - cached.cachedAt < 4 * 3600 * 1000) {
+      this.updateTeamStatusBarFromJson(cached.data);
       return;
     }
 
@@ -1334,7 +1361,12 @@ export class Axiode {
     if (this.isMetricsEnabled) args.push('--metrics');
 
     const apiKey = await this.options.getApiKey();
-    if (!Utils.apiKeyInvalid(apiKey)) args.push('--key', Utils.quote(apiKey));
+    if (!Utils.apiKeyInvalid(apiKey)) {
+      const cliKey = apiKey.startsWith('axiode_')
+        ? 'waka_' + apiKey.substring('axiode_'.length)
+        : apiKey;
+      args.push('--key', Utils.quote(cliKey));
+    }
 
     const apiUrl = await this.options.getApiUrl();
     if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
@@ -1384,7 +1416,7 @@ export class Axiode {
               );
             }
 
-            if (jsonData) this.teamDevsForFileCache[file!] = jsonData;
+            if (jsonData) this.teamDevsForFileCache[file!] = { data: jsonData, cachedAt: Date.now() };
 
             // make sure this file is still the currently focused file
             if (file !== this.currentlyFocusedFile) {
@@ -1426,9 +1458,9 @@ export class Axiode {
       this.updateTeamStatusBarTextForCurrentUser();
     }
     if (other) {
-      this.updateTeamStatusBarTextForOther(other.user.name + ': ' + other.total.text);
+      this.updateTeamStatusBarTextForOther(other.user.long_name + ' (' + other.user.id + ')');
       this.updateStatusBarTooltipForOther(
-        other.user.long_name + '’s total time spent in this file',
+        other.user.long_name + "'s total time spent in this file",
       );
     } else {
       this.updateTeamStatusBarTextForOther();

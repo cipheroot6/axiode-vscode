@@ -166,6 +166,8 @@ export class Dependencies {
           headers: {
             'User-Agent': 'github.com/axiode/axiode-vscode',
           },
+          proxy: proxy.value,
+          noSSLVerify: noSSLVerify.value === 'true',
         };
         this.logger.debug(`Fetching latest wakatime-cli version from GitHub API: ${this.githubReleasesUrl}`);
         try {
@@ -284,7 +286,10 @@ export class Dependencies {
     this.options.getSetting('settings', 'proxy', false, (proxy: Setting) => {
       this.options.getSetting('settings', 'no_ssl_verify', false, async (noSSLVerify: Setting) => {
         try {
-          const response = await fetch(url);
+          const response = await safeFetch(url, {
+            proxy: proxy.value,
+            noSSLVerify: noSSLVerify.value === 'true',
+          });
           if (!response.ok) {
             this.logger.warn(`Failed to download ${url}`);
             error();

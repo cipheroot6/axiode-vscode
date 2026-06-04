@@ -1,5 +1,9 @@
 export const COMMON_AI_EXTENSIONS: AIExtension[] = [
   {
+    name: 'antigravity',
+    extensionIds: ['google.antigravity', 'antigravity.antigravity'],
+  },
+  {
     // Claude Code VSCode extension (Anthropic)
     // Also covers users running `claude` CLI in the integrated terminal
     name: 'claude',
@@ -99,6 +103,7 @@ export interface Heartbeat {
 
 export interface AIExtension {
   name:
+    | 'antigravity'
     | 'claude'
     | 'codeium'
     | 'codex'
@@ -117,4 +122,4 @@ export interface AIExtension {
   extensionIds: string[];
 }
 
-export const ALLOWED_SCHEMES = ['file', 'vscode-chat-code-block', 'openai-codex', 'opencode', 'vscode-remote'];
+export const ALLOWED_SCHEMES = ['file', 'vscode-chat-code-block', 'openai-codex', 'opencode', 'antigravity', 'vscode-remote', 'copilot', 'codeium', 'cody', 'continue', 'claude', 'cursor', 'gemini', 'supermaven', 'tabnine', 'windsurf', 'chatgpt'];

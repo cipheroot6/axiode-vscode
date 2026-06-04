@@ -68,6 +68,6 @@ export function activate(ctx: vscode.ExtensionContext) {
   axiode.initialize();
 }
 
-export function deactivate() {
-  axiode.dispose();
+export async function deactivate() {
+  await axiode.dispose();
 }

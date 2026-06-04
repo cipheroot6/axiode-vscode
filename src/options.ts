@@ -20,6 +20,7 @@ export class Options {
   private logFile: string;
   private logger: Logger;
   private cache: any = {};
+  private configWatcher?: fs.FSWatcher = undefined;
 
   constructor(logger: Logger, resourcesFolder: string) {
     this.logger = logger;
@@ -29,11 +30,14 @@ export class Options {
 
     try {
       if (fs.existsSync(this.configFile)) {
-        fs.watch(this.configFile, async (event) => {
+        this.configWatcher = fs.watch(this.configFile, async (event) => {
           if (event === 'change') {
             this.clearApiKeyCache();
             try {
-              const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+              let apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+              if (apiKey && apiKey.startsWith('waka_')) {
+                apiKey = 'axiode_' + apiKey.substring('waka_'.length);
+              }
               if (!Utils.apiKeyInvalid(apiKey)) {
                 const editorKey = this.getApiKeyFromEditor();
                 if (editorKey !== apiKey) {
@@ -50,11 +54,14 @@ export class Options {
       } else {
         const parentDir = path.dirname(this.configFile);
         if (fs.existsSync(parentDir)) {
-          fs.watch(parentDir, async (event, filename) => {
+          this.configWatcher = fs.watch(parentDir, async (event, filename) => {
             if (filename === '.axiode.cfg') {
               this.clearApiKeyCache();
               try {
-                const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+                let apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+                if (apiKey && apiKey.startsWith('waka_')) {
+                  apiKey = 'axiode_' + apiKey.substring('waka_'.length);
+                }
                 if (!Utils.apiKeyInvalid(apiKey)) {
                   const editorKey = this.getApiKeyFromEditor();
                   if (editorKey !== apiKey) {
@@ -72,6 +79,13 @@ export class Options {
       }
     } catch (e) {
       this.logger.debugException(e as Error);
+    }
+  }
+
+  public dispose() {
+    if (this.configWatcher) {
+      this.configWatcher.close();
+      this.configWatcher = undefined;
     }
   }
 
@@ -126,6 +140,9 @@ export class Options {
   }
 
   public setSetting(section: string, key: string, val: string, internal: boolean): void {
+    if (section === 'settings' && key === 'api_key') {
+      val = val.startsWith('axiode_') ? 'waka_' + val.substring('axiode_'.length) : val;
+    }
     const configFile = this.getConfigFile(internal);
     fs.readFile(configFile, 'utf-8', (err: NodeJS.ErrnoException | null, content: string) => {
       // ignore errors because config file might not exist yet
@@ -178,6 +195,17 @@ export class Options {
   }
 
   public setSettings(section: string, settings: Setting[], internal: boolean): void {
+    if (section === 'settings') {
+      settings = settings.map((s) => {
+        if (s.key === 'api_key') {
+          return {
+            ...s,
+            value: s.value.startsWith('axiode_') ? 'waka_' + s.value.substring('axiode_'.length) : s.value,
+          };
+        }
+        return s;
+      });
+    }
     const configFile = this.getConfigFile(internal);
     fs.readFile(configFile, 'utf-8', (err: NodeJS.ErrnoException | null, content: string) => {
       // ignore errors because config file might not exist yet
@@ -251,6 +279,9 @@ export class Options {
   }
 
   public async getApiKey(): Promise<string> {
+    if (!Utils.apiKeyInvalid(this.cache.api_key)) {
+      return this.cache.api_key;
+    }
     let from = '';
 
     const keyFromSettings = this.getApiKeyFromEditor();
@@ -286,7 +317,10 @@ export class Options {
     } catch (err) {}
 
     try {
-      const apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+      let apiKey = await this.getSettingAsync<string>('settings', 'api_key');
+      if (apiKey && apiKey.startsWith('waka_')) {
+        apiKey = 'axiode_' + apiKey.substring('waka_'.length);
+      }
       if (!Utils.apiKeyInvalid(apiKey)) {
         if (this.cache.api_key && this.cache.api_key !== apiKey) {
           if (from === 'settings.json editor') {
@@ -346,7 +380,10 @@ export class Options {
       if (exitCode) this.logger.warn(`api key vault command error (${exitCode}): ${stderr}`);
       else if (stderr && stderr.trim()) this.logger.warn(stderr.trim());
 
-      const apiKey = stdout.toString().trim();
+      let apiKey = stdout.toString().trim();
+      if (apiKey.startsWith('waka_')) {
+        apiKey = 'axiode_' + apiKey.substring('waka_'.length);
+      }
       return apiKey;
     } catch (err) {
       this.logger.debug(`Exception while reading API Key Vault Cmd from config file: ${err}`);
@@ -355,7 +392,15 @@ export class Options {
   }
 
   public getApiKeyFromEditor(): string {
-    return vscode.workspace.getConfiguration().get('axiode.apiKey') || '';
+    let key = (vscode.workspace.getConfiguration().get('axiode.apiKey') as string) || '';
+    if (typeof key === 'string') {
+      key = key.trim();
+      if (key.startsWith('waka_')) {
+        key = 'axiode_' + key.substring('waka_'.length);
+      }
+      return key;
+    }
+    return '';
   }
 
   private getApiUrlFromEditor(): string {
@@ -383,8 +428,8 @@ export class Options {
   public getApiKeyFromEnv(): string {
     if (this.cache.api_key_from_env !== undefined) return this.cache.api_key_from_env;
 
-    const axiodeKey = process.env.AXIODE_API_KEY || '';
-    const wakatimeKey = process.env.WAKATIME_API_KEY || '';
+    let axiodeKey = process.env.AXIODE_API_KEY || '';
+    let wakatimeKey = process.env.WAKATIME_API_KEY || '';
 
     if (axiodeKey && wakatimeKey && axiodeKey !== wakatimeKey) {
       vscode.window.showErrorMessage(
@@ -392,7 +437,12 @@ export class Options {
       );
     }
 
-    this.cache.api_key_from_env = axiodeKey || wakatimeKey || '';
+    let key = (axiodeKey || wakatimeKey || '').trim();
+    if (key.startsWith('waka_')) {
+      key = 'axiode_' + key.substring('waka_'.length);
+    }
+
+    this.cache.api_key_from_env = key;
 
     return this.cache.api_key_from_env;
   }
@@ -425,6 +475,17 @@ export class Options {
     for (const suffix of suffixes) {
       if (apiUrl.endsWith(suffix)) {
         apiUrl = apiUrl.slice(0, -suffix.length);
+      }
+    }
+
+    if (!apiUrl.endsWith('/api/v1')) {
+      if (apiUrl.endsWith('/api')) {
+        apiUrl = apiUrl + '/v1';
+      } else if (!apiUrl.includes('/api/')) {
+        if (apiUrl.endsWith('/')) {
+          apiUrl = apiUrl.slice(0, -1);
+        }
+        apiUrl = apiUrl + '/api/v1';
       }
     }
 
