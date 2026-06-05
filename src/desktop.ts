@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as child_process from 'child_process';
 import { StdioOptions } from 'child_process';
+import * as path from 'path';
 
 export class Desktop {
   public static isWindows(): boolean {
@@ -22,13 +23,22 @@ export class Desktop {
   public static buildOptions(stdin?: boolean): Object {
     const options: child_process.ExecFileOptions = {
       windowsHide: true,
+      env: { ...process.env },
     };
     if (stdin) {
       (options as any).stdio = ['pipe', 'pipe', 'pipe'] as StdioOptions;
     }
-    if (!this.isWindows() && !process.env.AXIODE_HOME && !process.env.WAKATIME_HOME && !process.env.HOME) {
-      options['env'] = { ...process.env, WAKATIME_HOME: this.getHomeDirectory(), AXIODE_HOME: this.getHomeDirectory() };
+    
+    let home = this.getHomeDirectory();
+    // Prevent nesting if home already ends with .axiode
+    if (!home.endsWith('.axiode') && !home.endsWith('.wakatime')) {
+      home = path.join(home, '.axiode');
     }
+    
+    // Explicitly set WAKATIME_HOME to the .axiode folder to isolate offline databases
+    options.env!['WAKATIME_HOME'] = home;
+    options.env!['AXIODE_HOME'] = home;
+    
     return options;
   }
 }

@@ -1045,7 +1045,7 @@ export class Axiode {
     const folder = this.getProjectFolder(doc.uri);
     if (folder) heartbeat.project_folder = folder;
 
-    if (doc.isUntitled) heartbeat.is_unsaved_entity = true;
+    if (doc.isUntitled || Utils.isAIChatSidebar(doc.uri)) heartbeat.is_unsaved_entity = true;
 
     if (Utils.isRemoteUri(doc.uri)) {
       try {

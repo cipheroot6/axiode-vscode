@@ -853,6 +853,7 @@ logger: Logger, config: Memento) {
           'Authorization': `Bearer ${apiKey}`,
           'User-Agent':
             this.agentName + '/' + vscode.version + ' vscode-axiode/' + this.extension.version,
+          'X-Timezone-Offset': String(new Date().getTimezoneOffset()),
         },
       });
       const parsedJSON = await response.json();
