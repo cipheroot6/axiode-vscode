@@ -2,7 +2,7 @@
   "name": "axiode-vscode",
   "displayName": "Axiode",
   "description": "Real-time developer activity tracking for Axiode — sessions, projects, and productivity insights.",
-  "version": "1.0.36",
+  "version": "1.0.40",
   "publisher": "axiode",
   "author": {
     "name": "Axiode"
@@ -143,7 +143,8 @@
     }
   },
   "dependencies": {
-    "adm-zip": "0.5.16"
+    "adm-zip": "0.5.16",
+    "https-proxy-agent": "^9.0.0"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",

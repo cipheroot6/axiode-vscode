@@ -1,0 +1,12 @@
+POST /users/current/heartbeats.bulk HTTP/1.1
+Host: localhost:8080
+User-Agent: wakatime/v2.15.0 (linux-7.0.9-arch2-1-unknown) go1.26.3 Unknown/0
+Content-Length: 428
+Accept: application/json
+Authorization: Basic d2FrYV81OTQ3MDZkYi1lMTQyLTQ5YTQtODdjMS1jNWI1MzhjOGZmYjA=
+Content-Type: application/json
+Timezone: Asia/Kolkata
+X-Machine-Name: sandbox
+Accept-Encoding: gzip
+
+[{"branch":"master","dependencies":["child_process","fs","os","path","vscode","constants","types","utils","options","dependencies","desktop","logger"],"entity":"/home/cipheroot/allcode/saas/vscode-axiode/src/wakatime.ts","type":"file","language":"TypeScript","lines":1530,"project":"vscode-axiode","project_root_count":6,"time":1780673538.587065,"user_agent":"wakatime/v2.15.0 (linux-7.0.9-arch2-1-unknown) go1.26.3 Unknown/0"}]

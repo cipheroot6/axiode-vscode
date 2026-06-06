@@ -189,7 +189,7 @@ export class Options {
       }
 
       fs.writeFile(configFile as string, contents.join('\n'), (err) => {
-        if (err) throw err;
+        if (err) this.logger.error(err.toString());
       });
     });
   }
@@ -265,7 +265,7 @@ export class Options {
       });
 
       fs.writeFile(configFile as string, contents.join('\n'), (err) => {
-        if (err) throw err;
+        if (err) this.logger.error(err.toString());
       });
     });
   }

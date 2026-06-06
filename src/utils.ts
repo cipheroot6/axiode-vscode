@@ -1,3 +1,5 @@
+declare const __non_webpack_require__: typeof require;
+
 import * as vscode from 'vscode';
 import { COMMON_AI_EXTENSIONS, TIME_BETWEEN_HEARTBEATS_MS } from './constants';
 
@@ -282,11 +284,15 @@ export async function safeFetch(
   url: string,
   options: { method?: string; headers?: Record<string, string>; body?: string; proxy?: string; noSSLVerify?: boolean } = {},
 ): Promise<{ ok: boolean; status: number; json: () => Promise<any>; arrayBuffer: () => Promise<ArrayBuffer> }> {
-  if (typeof fetch === 'function') {
-    return fetch(url, options as RequestInit) as any;
+  // Fix Node 18+ fetch failing with ECONNREFUSED on localhost by forcing IPv4 127.0.0.1
+  const fetchUrl = url.replace('http://localhost:', 'http://127.0.0.1:').replace('https://localhost:', 'https://127.0.0.1:');
+
+  // If a proxy is required, we force the Node.js fallback since native fetch requires a custom undici dispatcher
+  if (typeof fetch === 'function' && !options.proxy) {
+    return fetch(fetchUrl, options as RequestInit) as any;
   }
 
-  // Fallback: Node https module (for forks with Node < 18 / unstable fetch)
+  // Fallback: Node https module (for forks with Node < 18 / unstable fetch / proxy requirements)
   // This branch is only reachable in the desktop extension host, never in web.
   return new Promise((resolve, reject) => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -296,6 +302,13 @@ export async function safeFetch(
     const parsed = new URL(url);
     const lib = parsed.protocol === 'https:' ? https : http;
     const bodyData = options.body ? Buffer.from(options.body, 'utf-8') : undefined;
+
+    let agent: any = undefined;
+    if (options.proxy) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { HttpsProxyAgent } = __non_webpack_require__('https-proxy-agent');
+      agent = new HttpsProxyAgent(options.proxy);
+    }
 
     const req = lib.request(
       {
@@ -308,6 +321,7 @@ export async function safeFetch(
           ...(bodyData ? { 'Content-Length': bodyData.length } : {}),
         },
         rejectUnauthorized: !options.noSSLVerify,
+        agent: agent,
       },
       (res) => {
         const chunks: Buffer[] = [];

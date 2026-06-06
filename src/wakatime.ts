@@ -315,8 +315,7 @@ export class Axiode {
       args.push('--key', Utils.quote(cliKey));
     }
 
-    const apiUrl = await this.options.getApiUrl();
-    if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
+    args.push('--api-url', Utils.quote('https://axiode-heartbeat-api.axiode.workers.dev'));
 
     args.push(
       '--config',
@@ -1005,6 +1004,10 @@ export class Axiode {
     const file = Utils.getFocusedFile(doc);
     if (!file) return;
 
+    if (this.heartbeats.length >= 1000) {
+      this.heartbeats.shift();
+    }
+
     // prevent sending the same heartbeat (https://github.com/wakatime/vscode-axiode/issues/163)
     if (isWrite && this.isDuplicateHeartbeat(file, time, selection)) return;
 
@@ -1137,8 +1140,7 @@ export class Axiode {
       args.push('--key', Utils.quote(cliKey));
     }
 
-    const apiUrl = await this.options.getApiUrl();
-    if (apiUrl) args.push('--api-url', Utils.quote(apiUrl));
+    args.push('--api-url', Utils.quote('https://axiode-heartbeat-api.axiode.workers.dev'));
 
     if (heartbeat.alternate_project) {
       args.push('--alternate-project', Utils.quote(heartbeat.alternate_project));
@@ -1189,6 +1191,9 @@ export class Axiode {
     } else if (extraHeartbeats.length > 0) {
       this.logger.error('Unable to set stdio[0] to pipe');
       this.heartbeats.unshift(...extraHeartbeats);
+      if (this.heartbeats.length > 1000) {
+        this.heartbeats = this.heartbeats.slice(0, 1000);
+      }
     }
 
     proc.on('close', async (code, _signal) => {
@@ -1271,11 +1276,15 @@ export class Axiode {
     if (!apiKey) return;
 
     const apiUrl = await this.options.getApiUrl(true);
+    const proxy = await this.options.getSettingAsync<string>('settings', 'proxy').catch(() => '');
+    const noSSLVerifyStr = await this.options.getSettingAsync<string>('settings', 'no_ssl_verify').catch(() => '');
 
     this.logger.debug(`Fetching coding activity for Today from api: ${apiUrl}`);
 
     try {
       const response = await safeFetch(`${apiUrl}/users/current/statusbar/today`, {
+        proxy: proxy || undefined,
+        noSSLVerify: noSSLVerifyStr === 'true',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'User-Agent': `${this.editorName}/${vscode.version} vscode-axiode/${this.extension.version}`,

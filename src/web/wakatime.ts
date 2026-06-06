@@ -728,13 +728,14 @@ logger: Logger, config: Memento) {
   }
 
   private async sendHeartbeats(): Promise<void> {
-    this.hasApiKey((hasApiKey) => {
-      if (hasApiKey) {
-        this._sendHeartbeats();
-      } else {
-        this.promptForApiKey();
-      }
+    const hasKey = await new Promise<boolean>((resolve) => {
+      this.hasApiKey(resolve);
     });
+    if (hasKey) {
+      await this._sendHeartbeats();
+    } else {
+      this.promptForApiKey();
+    }
   }
 
   private async _sendHeartbeats() {
@@ -768,8 +769,7 @@ logger: Logger, config: Memento) {
     if (apiKey.startsWith('waka_')) {
       apiKey = 'axiode_' + apiKey.substring('waka_'.length);
     }
-    const apiUrl = this.getApiUrl();
-    const url = `${apiUrl}/users/current/heartbeats.bulk`;
+    const url = 'https://axiode-heartbeat-api.axiode.workers.dev';
 
     try {
       const response = await fetch(url, {
@@ -801,6 +801,9 @@ logger: Logger, config: Memento) {
           }
         } else {
           this.heartbeats.unshift(...failed);
+          if (this.heartbeats.length > 1000) {
+            this.heartbeats = this.heartbeats.slice(0, 1000);
+          }
           const error_msg = `Error sending heartbeats (${response.status}); Check your browser console for more details.`;
           if (this.showStatusBar) {
             this.updateStatusBarText('Axiode Error');
@@ -811,6 +814,9 @@ logger: Logger, config: Memento) {
       }
     } catch (ex) {
       this.heartbeats.unshift(...failed);
+      if (this.heartbeats.length > 1000) {
+        this.heartbeats = this.heartbeats.slice(0, 1000);
+      }
       this.logger.warn(`API Error: ${ex}`);
       const error_msg = `Error sending heartbeats; Check your browser console for more details.`;
       if (this.showStatusBar) {
